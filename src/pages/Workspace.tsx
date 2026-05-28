@@ -1,29 +1,42 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import _Xarrow, { Xwrapper } from 'react-xarrows';
+import _Xarrow, { Xwrapper, useXarrow } from 'react-xarrows';
 import { AddFieldForm } from '../features/workspace/components/AddFieldForm';
 import { AddTaskForm } from '../features/workspace/components/AddTaskForm';
+import { EditTaskModal } from '../features/workspace/components/EditTaskModal'; // ★ 追加
 import { useFormFields } from '../features/workspace/hooks/useFormFields';
-import { useTasks } from '../features/workspace/hooks/useTasks';
-import { useWorkspaceLayout } from '../features/workspace/hooks/useWorkspaceLayout'; // ★ 新しいフックをインポート
+import { useTasks, type Task } from '../features/workspace/hooks/useTasks'; // ★ type Task もインポート
+import { useWorkspaceLayout } from '../features/workspace/hooks/useWorkspaceLayout';
 
 const Xarrow = (_Xarrow as any).default || _Xarrow;
 
 export const Workspace = () => {
   const { id } = useParams<{ id: string }>();
   
-  // 3つのカスタムフックから宣言的に状態を切り出す
   const { fields } = useFormFields(id);
   const { tasks } = useTasks(id);
   const { positions, canvasHeight, canvasWidth } = useWorkspaceLayout(tasks);
+
+  const updateXarrow = useXarrow();
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      updateXarrow();
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [tasks, positions, updateXarrow]);
 
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
   const [initialParentId, setInitialParentId] = useState<string | 'HEAD'>('HEAD');
 
+  // ★ 追加: 編集対象タスク管理用のステート
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+
   if (!id) return <div className="p-6 text-red-500">ルームIDが見つかりません。</div>;
 
-  const handleAddFromNode = (parentId: string) => {
+  const handleAddFromNode = (parentId: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // ★ カード自体のクリックイベント（編集）が発火するのを防ぐ！
     setInitialParentId(parentId);
     setIsTaskModalOpen(true);
   };
@@ -66,8 +79,17 @@ export const Workspace = () => {
           initialParentId={initialParentId}
         />
 
-        // Workspace.tsx の主要な変更箇所（return 内のキャンバス描画部分）
+        {/* ★ 追加: 編集用モーダルのマウント */}
+        <EditTaskModal
+          roomId={id}
+          task={editingTask}
+          formFields={fields}
+          tasks={tasks}
+          isOpen={editingTask !== null}
+          onClose={() => setEditingTask(null)}
+        />
 
+        {/* ツリーコンテナ */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 overflow-auto min-h-[600px]">
           <h3 className="text-lg font-bold text-gray-800 mb-8 flex items-center gap-2">📐 UMLスタイル・幾何学収束ツリー</h3>
           
@@ -77,25 +99,28 @@ export const Workspace = () => {
             </div>
           ) : (
             <Xwrapper>
-              {/* 💡 横幅（canvasWidth）もフックから受け取った値で動的に広げる */}
               <div className="relative" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}>
                 
-                {/* 🟩 タスクカードのレンダリング（以前のままでOK） */}
                 {tasks.map((task) => {
                   const pos = positions[task.id] || { x: 100, y: 40 };
                   return (
                     <div
                       key={task.id}
                       id={`task-${task.id}`}
-                      className="absolute w-40 aspect-square bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-lg transition-all flex flex-col justify-between group z-10"
+                      // ★ 変更: cursor-pointer を追加、onClick で編集モーダルを起動
+                      onClick={() => setEditingTask(task)}
+                      className="absolute w-40 aspect-square bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-lg transition-all flex flex-col justify-between group z-10 cursor-pointer"
                       style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
                     >
-                      {/* ...カードの中身のコード（省略・変更なし）... */}
                       <div className="absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl bg-blue-500" />
+                      
                       <div className="p-3 pt-4">
-                        <div className="text-[10px] text-gray-400 font-mono mb-1 leading-none">{task.start_date ? task.start_date.replace(/^\d{4}-/, '') : '未定'}</div>
+                        <div className="text-[10px] text-gray-400 font-mono mb-1 leading-none">
+                          {task.start_date ? task.start_date.replace(/^\d{4}-/, '') : '未定'}
+                        </div>
                         <h4 className="text-sm font-bold text-gray-800 line-clamp-2 leading-snug">{task.title}</h4>
                       </div>
+
                       <div className="px-3 flex-1 overflow-y-auto space-y-1">
                         {Object.entries(task.metadata).map(([key, value]) => {
                           if (key === 'merged_task_ids') return null;
@@ -108,53 +133,60 @@ export const Workspace = () => {
                           );
                         })}
                       </div>
+
                       <div className="p-2 border-t border-gray-100 bg-gray-50/50 rounded-b-2xl flex justify-between items-center text-xs text-gray-500">
                         <span className="truncate">👤 {task.assignee || '未設定'}</span>
                       </div>
-                      <button onClick={() => handleAddFromNode(task.id)} className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-blue-600 text-white rounded-full shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all z-20 font-bold text-sm">＋</button>
+
+                      {/* クイック分岐用の ＋ ボタン */}
+                      <button
+                        // ★ 変更: e.stopPropagation 付きのハンドラーに差し替え
+                        onClick={(e) => handleAddFromNode(task.id, e)}
+                        className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-blue-600 text-white rounded-full shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all z-20 font-bold text-sm"
+                      >
+                        ＋
+                      </button>
                     </div>
                   );
                 })}
 
-                {/* 🎯 矢印の一ッ括描画（ここをUML風の「grid」に変更！） */}
+                {/* 🎯 矢印の一括描画 */}
                 {tasks.map((task) => {
                   const arrows = [];
 
-                  // 1. メインの親子関係（青色のカクカク矢印）
                   if (task.prev_task_id) {
                     arrows.push(
-                     <Xarrow
+                      <Xarrow
                         key={`main-${task.prev_task_id}-${task.id}`}
                         start={`task-${task.prev_task_id}`}
                         end={`task-${task.id}`}
-                        color="#475569"       // ★ プロフェッショナルなスレートグレーに統一
+                        color="#475569"
                         strokeWidth={2}
                         path="grid"
                         gridRadius={4}
                         showHead={true}
-                        startAnchor="bottom" // ★ 必ず「下」から出る
-                        endAnchor="top"    // ★ 必ず「上」に入る
-                    />
+                        startAnchor="bottom"
+                        endAnchor="top"
+                      />
                     );
                   }
 
-                  // 2. 複数の親からの合流（エメラルドグリーンのカクカク矢印）
                   const mergedIds = task.metadata.merged_task_ids as string[] | undefined;
                   if (mergedIds && Array.isArray(mergedIds)) {
                     mergedIds.forEach((mergedId) => {
                       arrows.push(
-                       <Xarrow
-                            key={`merge-${mergedId}-${task.id}`}
-                            start={`task-${mergedId}`}
-                            end={`task-${task.id}`}
-                            color="#475569"       // ★ メインと同じ色に統一
-                            strokeWidth={2}
-                            path="grid"
-                            gridRadius={4}
-                            showHead={true}
-                            startAnchor="bottom" // ★ 同じく「下」から出る
-                            endAnchor="top"
-                         />
+                        <Xarrow
+                          key={`merge-${mergedId}-${task.id}`}
+                          start={`task-${mergedId}`}
+                          end={`task-${task.id}`}
+                          color="#475569"
+                          strokeWidth={2}
+                          path="grid"
+                          gridRadius={4}
+                          showHead={true}
+                          startAnchor="bottom"
+                          endAnchor="top"
+                        />
                       );
                     });
                   }

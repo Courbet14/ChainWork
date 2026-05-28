@@ -140,6 +140,58 @@ export const useTasks = (roomId: string | undefined) => {
       supabase.removeChannel(channel);
     };
   }, [roomId, fetchTasks]);
+  // 💡 useTasks.ts の既存の「addTask」や「useEffect」の下、return { ... } の上に追加してください。
 
-  return { tasks, addTask, isLoading };
+  // 4. タスクの情報を更新（チェーンの付け替え、合流の変更も一括処理）
+  const updateTask = async (
+    id: string,
+    updates: {
+      title: string;
+      assignee: string | null;
+      start_date: string | null;
+      end_date: string | null;
+      prev_task_id: string | null;
+      metadata: Record<string, any>;
+    }
+  ) => {
+    try {
+      const { error } = await supabase
+        .from('tasks')
+        .update({
+          title: updates.title,
+          assignee: updates.assignee,
+          start_date: updates.start_date,
+          end_date: updates.end_date,
+          prev_task_id: updates.prev_task_id,
+          metadata: updates.metadata,
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (err) {
+      console.error('タスク更新エラー:', err);
+      alert('タスクの更新に失敗しました。');
+    }
+  };
+
+  // 5. タスクの削除（子タスクのチェーンを保護する処理付き）
+  const deleteTask = async (id: string) => {
+    try {
+      // 安全弁：このタスクを親にしていた子タスクの prev_task_id を null（ルート）に逃がす
+      await supabase
+        .from('tasks')
+        .update({ prev_task_id: null })
+        .eq('prev_task_id', id);
+
+      // 本体の削除
+      const { error } = await supabase.from('tasks').delete().eq('id', id);
+      if (error) throw error;
+    } catch (err) {
+      console.error('タスク削除エラー:', err);
+      alert('タスクの削除に失敗しました。');
+    }
+  };
+
+  // 💡 既存の return 部分に二つの関数を書き足すのを忘れずに！
+  return { tasks, addTask, updateTask, deleteTask, isLoading };
 };
