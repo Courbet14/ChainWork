@@ -1,108 +1,74 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
 
+// 💡 ステータスの型を定義
+export type TaskStatus = '未着手' | '着手中' | '終了';
+
+// 💡 metadata の中身を厳格かつ柔軟に定義（ここが根本原因の解決策です）
+export type TaskMetadata = {
+  status?: TaskStatus;
+  merged_task_ids?: string[];
+  [key: string]: any; // カスタム拡張フォームの動的プロパティも許容する
+};
+
 export type Task = {
   id: string;
   room_id: string;
+  page_id: string;
   prev_task_id: string | null;
   title: string;
   assignee: string | null;
   start_date: string | null;
   end_date: string | null;
-  metadata: Record<string, any>;
+  metadata: TaskMetadata; // ★ 定義した型を適用
   created_at: string;
-  depth?: number; // ★ 分岐の深さを表すプロパティを追加
 };
 
-// 💡 分岐ツリーを解析し、さらに「開始日（start_date）の早い順」に兄弟をソートする関数
-const sortTasksAsTree = (unorderedTasks: Task[]): Task[] => {
-  if (unorderedTasks.length === 0) return [];
-
-  // 親IDから子タスクのリストを引くマップ
-  const childrenMap = new Map<string | null, Task[]>();
-  unorderedTasks.forEach((task) => {
-    const prev = task.prev_task_id;
-    if (!childrenMap.has(prev)) {
-      childrenMap.set(prev, []);
-    }
-    childrenMap.get(prev)!.push(task);
-  });
-
-  const sortedResult: Task[] = [];
-
-  // 再帰的にツリーを探索
-  const traverse = (parentId: string | null, currentDepth: number) => {
-    const children = childrenMap.get(parentId) || [];
-    
-    // ★ ここが最大の変更点：分岐した子たちを「開始日（start_date）」の順にソートする
-    children.sort((a, b) => {
-      // 開始日がない場合は、無限の未来（Infinity）として扱い、後ろに回す
-      const timeA = a.start_date ? new Date(a.start_date).getTime() : Infinity;
-      const timeB = b.start_date ? new Date(b.start_date).getTime() : Infinity;
-
-      if (timeA !== timeB) {
-        return timeA - timeB; // 日付が早い方が上
-      }
-      
-      // もし開始日が全く同じ、または両方とも未入力の場合は、作成日時が古い順にする
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    });
-
-    children.forEach((child) => {
-      sortedResult.push({ ...child, depth: currentDepth });
-      traverse(child.id, currentDepth + 1); // さらに深く
-    });
-  };
-
-  traverse(null, 0);
-
-  // 孤立タスクの安全結合
-  if (sortedResult.length < unorderedTasks.length) {
-    const visitedIds = new Set(sortedResult.map((t) => t.id));
-    unorderedTasks.forEach((task) => {
-      if (!visitedIds.has(task.id)) {
-        sortedResult.push({ ...task, depth: 0 });
-      }
-    });
-  }
-
-  return sortedResult;
-};
-
-export const useTasks = (roomId: string | undefined) => {
+export const useTasks = (pageId: string | null) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchTasks = useCallback(async () => {
-    if (!roomId) return;
+    if (!pageId) {
+      setTasks([]);
+      return;
+    }
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
-      .eq('room_id', roomId);
+      .eq('page_id', pageId);
 
     if (!error && data) {
-      // ★ 取得データをツリー順にソート
-      setTasks(sortTasksAsTree(data));
+      setTasks(data as Task[]); // 型をキャストして安全に格納
     }
-  }, [roomId]);
+  }, [pageId]);
 
-  const addTask = async (
-    title: string,
-    assignee: string,
-    startDate: string,
-    endDate: string,
-    metadata: Record<string, any>,
-    chosenPrevTaskId: string | null
-  ) => {
-    if (!roomId) return;
+  const addTask = async ({
+    roomId,
+    title,
+    assignee,
+    startDate,
+    endDate,
+    metadata,
+    chosenPrevTaskId
+  }: {
+    roomId: string;
+    title: string;
+    assignee: string;
+    startDate: string;
+    endDate: string;
+    metadata: TaskMetadata;
+    chosenPrevTaskId: string | null;
+  }) => {
+    if (!roomId || !pageId) return;
     setIsLoading(true);
 
     try {
-      // ★ 分岐の設計では「割り込みのポインタ付け替え」は不要になります（複数のタスクが同じ親を持ってよいため）
       const { error } = await supabase.from('tasks').insert([
         {
           room_id: roomId,
-          prev_task_id: chosenPrevTaskId, // 選んだ親タスクのIDをそのまま紐付け
+          page_id: pageId,
+          prev_task_id: chosenPrevTaskId,
           title,
           assignee: assignee || null,
           start_date: startDate || null,
@@ -120,78 +86,42 @@ export const useTasks = (roomId: string | undefined) => {
     }
   };
 
+  const updateTask = async (id: string, updates: Partial<Task>) => {
+    try {
+      const { error } = await supabase.from('tasks').update(updates).eq('id', id);
+      if (error) throw error;
+    } catch (err) {
+      console.error('更新エラー:', err);
+    }
+  };
+
+  const deleteTask = async (id: string) => {
+    try {
+      await supabase.from('tasks').update({ prev_task_id: null }).eq('prev_task_id', id);
+      const { error } = await supabase.from('tasks').delete().eq('id', id);
+      if (error) throw error;
+      await fetchTasks();
+    } catch (err) {
+      console.error('削除エラー:', err);
+    }
+  };
+
   useEffect(() => {
     fetchTasks();
-    if (!roomId) return;
+    if (!pageId) return;
 
     const uniqueId = Math.random().toString(36).substring(2, 15);
     const channel = supabase
-      .channel(`realtime-tasks-${roomId}-${uniqueId}`)
+      .channel(`realtime-tasks-${pageId}-${uniqueId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks', filter: `room_id=eq.${roomId}` },
-        () => {
-          fetchTasks();
-        }
+        { event: '*', schema: 'public', table: 'tasks', filter: `page_id=eq.${pageId}` },
+        () => { fetchTasks(); }
       )
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [roomId, fetchTasks]);
-  // 💡 useTasks.ts の既存の「addTask」や「useEffect」の下、return { ... } の上に追加してください。
+    return () => { supabase.removeChannel(channel); };
+  }, [pageId, fetchTasks]);
 
-  // 4. タスクの情報を更新（チェーンの付け替え、合流の変更も一括処理）
-  const updateTask = async (
-    id: string,
-    updates: {
-      title: string;
-      assignee: string | null;
-      start_date: string | null;
-      end_date: string | null;
-      prev_task_id: string | null;
-      metadata: Record<string, any>;
-    }
-  ) => {
-    try {
-      const { error } = await supabase
-        .from('tasks')
-        .update({
-          title: updates.title,
-          assignee: updates.assignee,
-          start_date: updates.start_date,
-          end_date: updates.end_date,
-          prev_task_id: updates.prev_task_id,
-          metadata: updates.metadata,
-        })
-        .eq('id', id);
-
-      if (error) throw error;
-    } catch (err) {
-      console.error('タスク更新エラー:', err);
-      alert('タスクの更新に失敗しました。');
-    }
-  };
-
-  // 5. タスクの削除（子タスクのチェーンを保護する処理付き）
-  const deleteTask = async (id: string) => {
-    try {
-      // 安全弁：このタスクを親にしていた子タスクの prev_task_id を null（ルート）に逃がす
-      await supabase
-        .from('tasks')
-        .update({ prev_task_id: null })
-        .eq('prev_task_id', id);
-
-      // 本体の削除
-      const { error } = await supabase.from('tasks').delete().eq('id', id);
-      if (error) throw error;
-    } catch (err) {
-      console.error('タスク削除エラー:', err);
-      alert('タスクの削除に失敗しました。');
-    }
-  };
-
-  // 💡 既存の return 部分に二つの関数を書き足すのを忘れずに！
   return { tasks, addTask, updateTask, deleteTask, isLoading };
 };
