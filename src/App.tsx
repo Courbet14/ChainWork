@@ -1,16 +1,18 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { Home } from './pages/Home';
-import { Workspace } from './pages/Workspace'; // ← インポートを追加
+import { Workspace } from './pages/Workspace';
 
 function App() {
   return (
-    <BrowserRouter>
+    <Router>
       <Routes>
+        {/* 💡 トップ画面 (ルーム作成・入室フォーム) */}
         <Route path="/" element={<Home />} />
-        {/* ダミーのdivを実際のWorkspaceコンポーネントに差し替え */}
-        <Route path="/room/:id" element={<Workspace />} />
+        
+        {/* 💡 ワークスペース画面 (末尾の :id で動的なルームIDをキャッチ) */}
+        <Route path="/workspace/:id" element={<Workspace />} />
       </Routes>
-    </BrowserRouter>
+    </Router>
   );
 }
 
