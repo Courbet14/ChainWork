@@ -6,9 +6,8 @@ export const useRoom = (roomId: string | undefined) => {
   const [isAuth, setIsAuth] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  // 💡 自動ログイン用のストレージキー
   const STORAGE_KEY = `chainwork_auth_${roomId}`;
-  const LEASE_DURATION = 24 * 60 * 60 * 1000; // 24時間（ミリ秒）
+  const LEASE_DURATION = 24 * 60 * 60 * 1000;
 
   const fetchRoom = useCallback(async () => {
     if (!roomId) return;
@@ -24,29 +23,25 @@ export const useRoom = (roomId: string | undefined) => {
       setRoom(data);
 
       if (data) {
-        // 1. パスワードがない部屋なら最初から編集・閲覧可能
         if (!data.edit_password) {
           setIsAuth(true);
         } else {
-          // 2. 💡 自動ログインのチェック（24時間リース）
           const cachedAuth = localStorage.getItem(STORAGE_KEY);
           if (cachedAuth) {
             const { password, expiry } = JSON.parse(cachedAuth);
-            // 期限内かつパスワードが一致しているか検証
             if (Date.now() < expiry && data.edit_password === password) {
               setIsAuth(true);
             } else {
-              localStorage.removeItem(STORAGE_KEY); // 期限切れなら削除
+              localStorage.removeItem(STORAGE_KEY);
             }
           }
         }
 
-        // 3. 💡 履歴保存用：アクセスしたルームのIDと名前を履歴に記録（Home画面用）
         const historyRaw = localStorage.getItem('chainwork_room_history');
         const history = historyRaw ? JSON.parse(historyRaw) : [];
-        const filtered = history.filter((h: any) => h.id !== data.id); // 重複削除
+        const filtered = history.filter((h: any) => h.id !== data.id);
         const newHistory = [{ id: data.id, name: data.name || data.id, accessedAt: Date.now() }, ...filtered];
-        localStorage.setItem('chainwork_room_history', JSON.stringify(newHistory.slice(0, 5))); // 直近5件まで保存
+        localStorage.setItem('chainwork_room_history', JSON.stringify(newHistory.slice(0, 5)));
       }
     } catch (err) {
       console.error(err);
@@ -59,15 +54,10 @@ export const useRoom = (roomId: string | undefined) => {
     fetchRoom();
   }, [fetchRoom]);
 
-  // 💡 パスワード検証 ＆ 24時間リース保存
   const verifyPassword = (input: string) => {
     if (room && room.edit_password === input) {
       setIsAuth(true);
-      // 24時間の期限付きでパスワードを保存
-      const authData = {
-        password: input,
-        expiry: Date.now() + LEASE_DURATION
-      };
+      const authData = { password: input, expiry: Date.now() + LEASE_DURATION };
       localStorage.setItem(STORAGE_KEY, JSON.stringify(authData));
       return true;
     }
@@ -101,46 +91,134 @@ export const useRoom = (roomId: string | undefined) => {
     } catch (err) { console.error(err); return false; }
   };
 
-  const cloneWholeRoom = async (sourceId: string, targetId: string) => {
-    // 既存のcloneロジック（そのまま維持）
+ const cloneWholeRoom = async (sourceRoomId: string, currentRoomId: string) => {
     try {
-      const { data: sourceRoom } = await supabase.from('rooms').select('*').eq('id', sourceId).maybeSingle();
-      if (!sourceRoom || !sourceRoom.is_copyable) { alert('指定されたルームは存在しないか、コピーが許可されていません。'); return false; }
-      await supabase.from('rooms').insert([{ id: targetId, name: `${sourceRoom.name} (Copy)`, is_copyable: false, edit_password: null }]);
-      const { data: sourcePages } = await supabase.from('task_pages').select('*').eq('room_id', sourceId);
-      if (sourcePages && sourcePages.length > 0) {
-        for (const page of sourcePages) {
-          const { data: newPage } = await supabase.from('task_pages').insert([{ room_id: targetId, name: page.name }]).select().single();
-          if (newPage) {
-            const { data: sourceTasks } = await supabase.from('tasks').select('*').eq('page_id', page.id);
-            if (sourceTasks && sourceTasks.length > 0) {
-              const idMapping: Record<string, string> = {};
-              for (const t of sourceTasks) {
-                const { data: nTask } = await supabase.from('tasks').insert([{ page_id: newPage.id, title: t.title, assignee: t.assignee, start_date: t.start_date, end_date: t.end_date, metadata: t.metadata }]).select().single();
-                if (nTask) idMapping[t.id] = nTask.id;
-              }
-              const { data: newTasks } = await supabase.from('tasks').select('*').eq('page_id', newPage.id);
-              if (newTasks) {
-                for (const nt of newTasks) {
-                  const originalTask = sourceTasks.find(st => st.title === nt.title);
-                  let updatedPrevId = originalTask?.prev_task_id && idMapping[originalTask.prev_task_id] ? idMapping[originalTask.prev_task_id] : null;
-                  let updatedMeta = { ...nt.metadata };
-                  if (updatedMeta.merged_task_ids && Array.isArray(updatedMeta.merged_task_ids)) {
-                    updatedMeta.merged_task_ids = updatedMeta.merged_task_ids.map((oldId: string) => idMapping[oldId]).filter(Boolean);
-                  }
-                  await supabase.from('tasks').update({ prev_task_id: updatedPrevId, metadata: updatedMeta }).eq('id', nt.id);
-                }
-              }
-            }
-          }
+      setIsLoading(true);
+
+      // 1. コピー元（対象）のルーム情報を取得
+      const { data: sourceRoom, error: roomError } = await supabase
+        .from('rooms')
+        .select('name')
+        .eq('id', sourceRoomId)
+        .single();
+
+      if (roomError || !sourceRoom) {
+        alert('❌ 対象のルームが見つかりません。');
+        return false;
+      }
+
+      // 2. コピー元（対象）の全ページ・フォルダ要素を取得
+      const { data: sourcePages, error: pagesError } = await supabase
+        .from('task_pages')
+        .select('*')
+        .eq('room_id', sourceRoomId)
+        .order('sort_order', { ascending: true });
+
+      if (pagesError || !sourcePages || sourcePages.length === 0) {
+        alert('⚠️ 対象ルームに要素がないか、読み込めませんでした。');
+        return false;
+      }
+
+      // 3. 現在のルームのルート直下にある要素数を取得して sort_order を決定
+      const { data: currentRootItems, error: countError } = await supabase
+        .from('task_pages')
+        .select('sort_order')
+        .eq('room_id', currentRoomId)
+        .is('parent_id', null);
+
+      const rootCount = currentRootItems ? currentRootItems.length : 0;
+
+      // 4. 親フォルダ（パッケージフォルダ）を新規作成
+      const { data: parentFolder, error: folderError } = await supabase
+        .from('task_pages')
+        .insert({
+          room_id: currentRoomId,
+          name: `📦 ${sourceRoom.name} のクローン`,
+          is_folder: true,
+          parent_id: null, // ルート直下に配置
+          sort_order: rootCount
+        })
+        .select()
+        .single();
+
+      if (folderError || !parentFolder) throw folderError;
+
+      // 古いUUID -> 新しいUUID の翻訳辞書
+      const idMapping: { [oldId: string]: string } = {};
+
+      // 5. 【パス1】元のルート要素（parent_id が null）を新フォルダの直下にインサート
+      const rootItems = sourcePages.filter(p => p.parent_id === null);
+      for (const item of rootItems) {
+        // 💡 核心修正: id を含めず、必要なカラムだけをクリーンにインサートして 409 衝突を防ぐ
+        const { data: newRow, error: err } = await supabase
+          .from('task_pages')
+          .insert({
+            room_id: currentRoomId,
+            name: item.name,
+            is_folder: item.is_folder,
+            parent_id: parentFolder.id, // 新設した親フォルダの中に入れる
+            sort_order: item.sort_order
+          })
+          .select()
+          .single();
+        
+        if (err) {
+          console.error('Path1 insert error:', err);
+          continue;
+        }
+        if (newRow) {
+          idMapping[item.id] = newRow.id;
         }
       }
-      const { data: sourceFields } = await supabase.from('form_fields').select('*').eq('room_id', sourceId);
-      if (sourceFields && sourceFields.length > 0) {
-        await supabase.from('form_fields').insert(sourceFields.map(f => ({ room_id: targetId, label: f.label, field_type: f.field_type, field_key: f.field_key })));
+
+      // 6. 【パス2】子・孫階層の要素を、マッピングが解決したものから順にインサート
+      let remainingPages = sourcePages.filter(p => p.parent_id !== null);
+      let previousLength = remainingPages.length;
+
+      while (remainingPages.length > 0) {
+        const injectable = remainingPages.filter(p => p.parent_id && idMapping[p.parent_id]);
+        
+        for (const item of injectable) {
+          const { data: newRow, error: err } = await supabase
+            .from('task_pages')
+            .insert({
+              room_id: currentRoomId,
+              name: item.name,
+              is_folder: item.is_folder,
+              parent_id: idMapping[item.parent_id!], // 新しい世界の親フォルダIDに置換
+              sort_order: item.sort_order
+            })
+            .select()
+            .single();
+
+          if (err) {
+            console.error('Path2 insert error:', err);
+            continue;
+          }
+          if (newRow) {
+            idMapping[item.id] = newRow.id;
+          }
+        }
+
+        // 残った未処理の要素をフィルタリング
+        remainingPages = remainingPages.filter(p => !idMapping[p.id]);
+        
+        // 無限ループ防止（処理件数に進捗がなければ強制ブレイク）
+        if (remainingPages.length === previousLength) break;
+        previousLength = remainingPages.length;
       }
+
+      alert('✅ 対象ルームの要素を現在のフォルダ内に複製・追加しました！');
+      window.location.reload(); 
       return true;
-    } catch (err) { console.error(err); return false; }
+
+    } catch (err) {
+      console.error('Clone error:', err);
+      alert('❌ 複製の作成中にエラーが発生しました。');
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return { room, isAuth, verifyPassword, toggleCopyable, updateRoom, cloneWholeRoom, isLoading };
