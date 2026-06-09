@@ -55,9 +55,12 @@ export const Workspace = () => {
 
   const handleExecuteClone = async () => {
     if (!sourceRoomInput.trim() || !id) return;
+    
     const ok = await cloneWholeRoom(sourceRoomInput.trim(), id);
     if (ok) {
       setSourceRoomInput('');
+      // 💡 追加！クローン成功後、今の部屋の最新ツリーを読み込み直すためにリロードする
+      window.location.reload();
     }
   };
 
