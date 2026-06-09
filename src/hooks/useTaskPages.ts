@@ -26,16 +26,17 @@ export const useTaskPages = (roomId: string | undefined) => {
         .order('sort_order', { ascending: true });
 
       if (error) throw error;
+      
       const fetchedData = data || [];
       setPages(fetchedData);
       
-      setSelectedPageId(prev => {
-        if (prev && fetchedData.some(p => p.id === prev && !p.is_folder)) return prev;
-        const firstPage = fetchedData.find(p => !p.is_folder);
+      setSelectedPageId((prev) => {
+        if (prev && fetchedData.some((p) => p.id === prev && !p.is_folder)) return prev;
+        const firstPage = fetchedData.find((p) => !p.is_folder);
         return firstPage ? firstPage.id : null;
       });
     } catch (err) {
-      console.error('Fetch pages error:', err);
+      console.error('Failed to fetch pages:', err);
     } finally {
       setIsLoading(false);
     }
@@ -45,10 +46,22 @@ export const useTaskPages = (roomId: string | undefined) => {
     fetchPages();
   }, [fetchPages]);
 
+  const syncWithDatabase = async (nextPages: TaskPageItem[]) => {
+    setPages(nextPages);
+    try {
+      const updates = nextPages.map(({ id, room_id, name, is_folder, parent_id, sort_order }) => ({
+        id, room_id, name, is_folder, parent_id, sort_order
+      }));
+      await supabase.from('task_pages').upsert(updates);
+    } catch (err) {
+      console.error('Database sync error:', err);
+    }
+  };
+
   const createItem = async (name: string, isFolder: boolean, parentId: string | null = null) => {
     if (!roomId || !name.trim()) return;
     try {
-      const siblingCount = pages.filter(p => p.parent_id === parentId).length;
+      const siblingCount = pages.filter((p) => p.parent_id === parentId).length;
       const { data, error } = await supabase
         .from('task_pages')
         .insert([{ room_id: roomId, name: name.trim(), is_folder: isFolder, parent_id: parentId, sort_order: siblingCount }])
@@ -56,9 +69,11 @@ export const useTaskPages = (roomId: string | undefined) => {
         .single();
 
       if (error) throw error;
-      setPages(prev => [...prev, data]);
+      setPages((prev) => [...prev, data]);
       if (!isFolder) setSelectedPageId(data.id);
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error('Failed to create item:', err);
+    }
   };
 
   const updateItemName = async (id: string, newName: string) => {
@@ -66,103 +81,77 @@ export const useTaskPages = (roomId: string | undefined) => {
     try {
       const { error } = await supabase.from('task_pages').update({ name: newName.trim() }).eq('id', id);
       if (error) throw error;
-      setPages(prev => prev.map(p => p.id === id ? { ...p, name: newName.trim() } : p));
-    } catch (err) { console.error(err); }
+      setPages((prev) => prev.map((p) => (p.id === id ? { ...p, name: newName.trim() } : p)));
+    } catch (err) {
+      console.error('Failed to update item name:', err);
+    }
   };
 
   const deleteItem = async (id: string) => {
     try {
       const { error } = await supabase.from('task_pages').delete().eq('id', id);
       if (error) throw error;
-      setPages(prev => prev.filter(p => p.id !== id));
-      setSelectedPageId(prev => prev === id ? null : prev);
-    } catch (err) { console.error(err); }
-  };
-
-  // 💡 共通の保存関数
-  const syncWithDatabase = async (nextPages: TaskPageItem[]) => {
-    setPages(nextPages); // 即時反映
-    try {
-      const updates = nextPages.map(p => ({
-        id: p.id,
-        room_id: p.room_id,
-        name: p.name,
-        is_folder: p.is_folder,
-        parent_id: p.parent_id,
-        sort_order: p.sort_order
-      }));
-      await supabase.from('task_pages').upsert(updates);
+      setPages((prev) => prev.filter((p) => p.id !== id));
+      setSelectedPageId((prev) => (prev === id ? null : prev));
     } catch (err) {
-      console.error('Sync error:', err);
+      console.error('Failed to delete item:', err);
     }
   };
 
-  // 🔼 1つ上に移動
   const moveItemUp = (id: string) => {
-    const targetIdx = pages.findIndex(p => p.id === id);
+    const targetIdx = pages.findIndex((p) => p.id === id);
     if (targetIdx <= 0) return;
 
-    const currentSiblings = pages.filter(p => p.parent_id === pages[targetIdx].parent_id);
-    const sibIdx = currentSiblings.findIndex(p => p.id === id);
+    const currentSiblings = pages.filter((p) => p.parent_id === pages[targetIdx].parent_id);
+    const sibIdx = currentSiblings.findIndex((p) => p.id === id);
     if (sibIdx <= 0) return;
 
     const prevSibling = currentSiblings[sibIdx - 1];
-    const prevGlobalIdx = pages.findIndex(p => p.id === prevSibling.id);
+    const prevGlobalIdx = pages.findIndex((p) => p.id === prevSibling.id);
 
     const nextPages = [...pages];
-    // グローバルな配列内を入れ替え
-    nextPages[targetIdx] = nextPages[prevGlobalIdx];
-    nextPages[prevGlobalIdx] = pages[targetIdx];
+    [nextPages[targetIdx], nextPages[prevGlobalIdx]] = [nextPages[prevGlobalIdx], nextPages[targetIdx]];
 
-    const reordered = nextPages.map((p, idx) => ({ ...p, sort_order: idx }));
-    syncWithDatabase(reordered);
+    syncWithDatabase(nextPages.map((p, idx) => ({ ...p, sort_order: idx })));
   };
 
-  // 🔽 1つ下に移動
   const moveItemDown = (id: string) => {
-    const targetIdx = pages.findIndex(p => p.id === id);
+    const targetIdx = pages.findIndex((p) => p.id === id);
     if (targetIdx === -1 || targetIdx === pages.length - 1) return;
 
-    const currentSiblings = pages.filter(p => p.parent_id === pages[targetIdx].parent_id);
-    const sibIdx = currentSiblings.findIndex(p => p.id === id);
+    const currentSiblings = pages.filter((p) => p.parent_id === pages[targetIdx].parent_id);
+    const sibIdx = currentSiblings.findIndex((p) => p.id === id);
     if (sibIdx === -1 || sibIdx === currentSiblings.length - 1) return;
 
     const nextSibling = currentSiblings[sibIdx + 1];
-    const nextGlobalIdx = pages.findIndex(p => p.id === nextSibling.id);
+    const nextGlobalIdx = pages.findIndex((p) => p.id === nextSibling.id);
 
     const nextPages = [...pages];
-    nextPages[targetIdx] = nextPages[nextGlobalIdx];
-    nextPages[nextGlobalIdx] = pages[targetIdx];
+    [nextPages[targetIdx], nextPages[nextGlobalIdx]] = [nextPages[nextGlobalIdx], nextPages[targetIdx]];
 
-    const reordered = nextPages.map((p, idx) => ({ ...p, sort_order: idx }));
-    syncWithDatabase(reordered);
+    syncWithDatabase(nextPages.map((p, idx) => ({ ...p, sort_order: idx })));
   };
 
-  // ↩️ フォルダの外（親の階層）に出す
   const moveItemOut = (id: string) => {
-    const nextPages = pages.map(p => {
+    const nextPages = pages.map((p) => {
       if (p.id !== id) return p;
-      // 親フォルダの、さらにその親フォルダのIDを割り当てる（なければnullでルートへ）
-      const parentFolder = pages.find(pf => pf.id === p.parent_id);
+      const parentFolder = pages.find((pf) => pf.id === p.parent_id);
       return { ...p, parent_id: parentFolder ? parentFolder.parent_id : null };
     });
-    const reordered = nextPages.map((p, idx) => ({ ...p, sort_order: idx }));
-    syncWithDatabase(reordered);
+    syncWithDatabase(nextPages.map((p, idx) => ({ ...p, sort_order: idx })));
   };
 
-  // ↪️ 1つ上にあるフォルダの中に格納する
   const moveItemIn = (id: string) => {
-    const targetIdx = pages.findIndex(p => p.id === id);
-    const currentSiblings = pages.filter(p => p.parent_id === pages[targetIdx].parent_id);
-    const sibIdx = currentSiblings.findIndex(p => p.id === id);
-    if (sibIdx <= 0) return; // 上に要素がなければしまえない
+    const targetIdx = pages.findIndex((p) => p.id === id);
+    const currentSiblings = pages.filter((p) => p.parent_id === pages[targetIdx].parent_id);
+    const sibIdx = currentSiblings.findIndex((p) => p.id === id);
+    if (sibIdx <= 0) return;
 
     const prevSibling = currentSiblings[sibIdx - 1];
-    if (!prevSibling.is_folder) return; // 上の要素がフォルダじゃなければしまえない
+    if (!prevSibling.is_folder) return;
 
-    const nextPages = pages.map(p => p.id === id ? { ...p, parent_id: prevSibling.id } : p);
-    const reordered = nextPages.map((p, idx) => ({ ...p, sort_order: idx }));
-    syncWithDatabase(reordered);
+    const nextPages = pages.map((p) => (p.id === id ? { ...p, parent_id: prevSibling.id } : p));
+    syncWithDatabase(nextPages.map((p, idx) => ({ ...p, sort_order: idx })));
   };
 
   return {

@@ -70,7 +70,9 @@ export const useRoom = (roomId: string | undefined) => {
       const { error } = await supabase.from('rooms').update({ is_copyable: allowed }).eq('id', roomId);
       if (error) throw error;
       setRoom((prev: any) => prev ? { ...prev, is_copyable: allowed } : null);
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const updateRoom = async (newName: string, newPassword: string | null) => {
@@ -88,15 +90,16 @@ export const useRoom = (roomId: string | undefined) => {
         localStorage.removeItem(STORAGE_KEY);
       }
       return true;
-    } catch (err) { console.error(err); return false; }
+    } catch (err) {
+      console.error(err);
+      return false;
+    }
   };
 
-  // 🚀 ルーム名フォルダを作成してその中に完全複製するロジック
   const cloneWholeRoom = async (sourceRoomId: string, newRoomId: string) => {
     try {
       setIsLoading(true);
 
-      // 1. コピー元のルーム情報を取得
       const { data: sourceRoom, error: roomError } = await supabase
         .from('rooms')
         .select('name, is_copyable')
@@ -104,16 +107,15 @@ export const useRoom = (roomId: string | undefined) => {
         .single() as any;
 
       if (roomError || !sourceRoom) {
-        alert('❌ 対象のルームが見つかりません。');
+        alert('対象のルームが見つかりません。');
         return false;
       }
 
       if (sourceRoom && !sourceRoom.is_copyable) {
-        alert('🔒 このルームは管理者によって「配布コピー：禁止中」に設定されているため、複製できません。');
+        alert('このルームは管理者によってコピーが制限されています。');
         return false;
       }
 
-      // 2. コピー元の全ページ・フォルダ要素を取得
       const { data: sourcePages, error: pagesError } = await supabase
         .from('task_pages')
         .select('*')
@@ -124,7 +126,6 @@ export const useRoom = (roomId: string | undefined) => {
         return true; 
       }
 
-      // 🎯 【新規追加】コピー先のルートに、受け皿となる「ルーム名の親フォルダ」を作成
       const { data: currentRootItems } = await supabase
         .from('task_pages')
         .select('sort_order')
@@ -137,9 +138,9 @@ export const useRoom = (roomId: string | undefined) => {
         .from('task_pages')
         .insert({
           room_id: newRoomId,
-          name: sourceRoom.name, // 💡 ここで元のルーム名をフォルダ名にする
+          name: sourceRoom.name,
           is_folder: true,
-          parent_id: null,       // このフォルダ自体はルートに配置
+          parent_id: null,
           sort_order: rootCount
         })
         .select()
@@ -147,11 +148,9 @@ export const useRoom = (roomId: string | undefined) => {
 
       if (wrapperErr || !wrapperFolder) throw wrapperErr;
 
-      // 古いページID -> 新しいページID の翻訳辞書マップ
       const pageIdMapping: { [oldId: string]: string } = {};
-
-      // 3. 【ページ複製：パス1】元のルート要素を、さきほど作った「ルーム名フォルダ」の中にインサート
       const rootItems = sourcePages.filter(p => p.parent_id === null);
+      
       for (const item of rootItems) {
         const { data: newRow, error: err } = await supabase
           .from('task_pages')
@@ -159,17 +158,16 @@ export const useRoom = (roomId: string | undefined) => {
             room_id: newRoomId,
             name: item.name,
             is_folder: item.is_folder,
-            parent_id: wrapperFolder.id, // 💡 nullではなく、wrapperFolder.id の中に格納！
+            parent_id: wrapperFolder.id,
             sort_order: item.sort_order
           })
           .select()
           .single();
         
-        if (err) { console.error('Page Path1 error:', err); continue; }
+        if (err) continue;
         if (newRow) pageIdMapping[item.id] = newRow.id;
       }
 
-      // 4. 【ページ複製：パス2】子・孫階層のフォルダ・ページをインサート（変更なし）
       let remainingPages = sourcePages.filter(p => p.parent_id !== null);
       let previousLength = remainingPages.length;
 
@@ -188,7 +186,7 @@ export const useRoom = (roomId: string | undefined) => {
             .select()
             .single();
 
-          if (err) { console.error('Page Path2 error:', err); continue; }
+          if (err) continue;
           if (newRow) pageIdMapping[item.id] = newRow.id;
         }
         remainingPages = remainingPages.filter(p => !pageIdMapping[p.id]);
@@ -196,7 +194,6 @@ export const useRoom = (roomId: string | undefined) => {
         previousLength = remainingPages.length;
       }
 
-      // 5. 【タスク複製】（変更なし）
       const sourcePageIds = sourcePages.map(p => p.id);
       const { data: sourceTasks, error: tasksError } = await supabase
         .from('tasks')
@@ -228,10 +225,7 @@ export const useRoom = (roomId: string | undefined) => {
             .select()
             .single();
 
-          if (taskInsErr) {
-            console.error('Task basic insert error:', taskInsErr);
-            continue;
-          }
+          if (taskInsErr) continue;
 
           if (newCtxTask) {
             taskIdMapping[task.id] = newCtxTask.id;
@@ -272,7 +266,7 @@ export const useRoom = (roomId: string | undefined) => {
 
     } catch (err) {
       console.error('Clone error:', err);
-      alert('❌ 複製の作成中にエラーが発生しました。');
+      alert('複製処理中にエラーが発生しました。');
       return false;
     } finally {
       setIsLoading(false);

@@ -1,11 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import _Xarrow, { Xwrapper, useXarrow } from 'react-xarrows';
+import ReactMarkdown from 'react-markdown'; // 💡 追加: プレビュー用Markdownレンダラー
+
 import { AddFieldForm } from '../components/AddFieldForm';
 import { AddTaskForm } from '../components/AddTaskForm';
 import { EditTaskModal } from '../components/EditTaskModal';
 import { EditRoomModal } from '../components/EditRoomModal';
 import { FileTreeEditor } from '../components/FileTreeEditor';
+import { PasswordGate } from '../components/PasswordGate';
 import { useFormFields } from '../hooks/useFormFields';
 import { useTasks } from '../hooks/useTasks';
 import { useTaskPages } from '../hooks/useTaskPages';
@@ -21,7 +24,6 @@ export const Workspace = () => {
   const navigate = useNavigate();
   const updateXarrow = useXarrow();
 
-  // 💡 useRoom から認証状態（isAuth）とパスワード検証関数（verifyPassword）を取得
   const { room, isAuth, verifyPassword, toggleCopyable, updateRoom, cloneWholeRoom, isLoading: isRoomLoading } = useRoom(id);
   const { pages, selectedPageId, setSelectedPageId, updateItemName, deleteItem, createPage, createFolder, moveItemUp, moveItemDown, moveItemOut, moveItemIn } = useTaskPages(id);
   const { fields } = useFormFields(id);
@@ -35,8 +37,7 @@ export const Workspace = () => {
   const [initialParentId, setInitialParentId] = useState<string | 'HEAD'>('HEAD');
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [sourceRoomInput, setSourceRoomInput] = useState('');
-
-  // 💡 パスワードゲート専用のローカルステート
+  
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState(false);
 
@@ -55,11 +56,9 @@ export const Workspace = () => {
 
   const handleExecuteClone = async () => {
     if (!sourceRoomInput.trim() || !id) return;
-    
     const ok = await cloneWholeRoom(sourceRoomInput.trim(), id);
     if (ok) {
       setSourceRoomInput('');
-      // 💡 追加！クローン成功後、今の部屋の最新ツリーを読み込み直すためにリロードする
       window.location.reload();
     }
   };
@@ -73,94 +72,47 @@ export const Workspace = () => {
     }
   };
 
-  // 💡 パスワード認証を実行するハンドラー
   const handleAuthSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(false);
-    
-    const success = verifyPassword(passwordInput);
-    if (success) {
-      setPasswordInput('');
-    } else {
-      setAuthError(true);
-    }
+    if (verifyPassword(passwordInput)) setPasswordInput('');
+    else setAuthError(true);
   };
 
-  // 🔐 【核心修正】未認証（isAuth === false）かつ、部屋データがロード済みの場合は、画面丸ごとロックして「パスワード入力ゲート」を表示する！
   if (!isRoomLoading && room && !isAuth) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center bg-slate-950 text-white font-sans">
-        <div className="w-full max-w-md p-8 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95 duration-200">
-          <div className="w-16 h-16 bg-blue-600/10 border border-blue-500/20 text-blue-400 rounded-2xl flex items-center justify-center text-2xl mx-auto shadow-inner">
-            🔒
-          </div>
-          <div className="space-y-1">
-            <h1 className="text-xl font-black tracking-wide text-slate-100">ルーム保護</h1>
-            <p className="text-xs text-slate-400 font-mono">Room ID: {id}</p>
-            <p className="text-sm font-bold text-blue-400 mt-2">📂 {room.name}</p>
-          </div>
-          
-          <p className="text-xs text-slate-400 leading-relaxed px-4">
-            この空間は編集パスワードによって保護されています。<br />編集・閲覧を再開するにはパスワードを入力してください。
-          </p>
-
-          <form onSubmit={handleAuthSubmit} className="space-y-3 text-left">
-            <div>
-              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">編集用パスワード</label>
-              <input 
-                type="password" 
-                placeholder="••••••••" 
-                value={passwordInput}
-                onChange={e => setPasswordInput(e.target.value)}
-                autoFocus
-                className={`w-full bg-slate-950 text-slate-200 border rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors
-                  ${authError ? 'border-red-500 focus:border-red-500 bg-red-950/10' : 'border-slate-800 focus:border-blue-500'}`}
-              />
-            </div>
-
-            {authError && (
-              <p className="text-[11px] text-red-400 font-medium pl-1 animate-bounce">
-                ⚠️ パスワードが一致しません。もう一度お試しください。
-              </p>
-            )}
-
-            <button 
-              type="submit" 
-              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold text-sm py-3 rounded-xl transition-all shadow-lg shadow-blue-600/10 mt-2"
-            >
-              認証してロックを解除
-            </button>
-          </form>
-        </div>
-      </div>
+      <PasswordGate 
+        roomId={id} 
+        roomName={room.name} 
+        authError={authError} 
+        passwordInput={passwordInput} 
+        setPasswordInput={setPasswordInput} 
+        onSubmit={handleAuthSubmit} 
+      />
     );
   }
 
-  // 🟢 認証済み、またはパスワードがかかっていない通常の画面描画
   return (
     <div className="relative flex h-screen bg-gray-100 overflow-hidden text-gray-800">
-      
-      {/* 📁 左側：サイドバー */}
       <aside className="w-80 bg-slate-900 text-slate-200 p-4 flex flex-col justify-between border-r border-slate-800 z-20 overflow-hidden">
         <div className="space-y-4 flex flex-col h-full overflow-hidden">
-          
           <div className="border-b border-slate-800 pb-3 flex-shrink-0">
             <h2 className="text-2xl font-black tracking-wider text-white">ChainWork</h2>
             <div className="flex items-center justify-between mt-1 text-xs text-slate-400 font-mono">
               <span>Room ID: {id}</span>
             </div>
             <p className="text-sm font-bold text-blue-400 font-sans mt-1 bg-slate-800/40 px-2.5 py-1 rounded-lg border border-slate-800/50 truncate">
-              📂 {room?.name || 'Loading...'}
+              {room?.name || 'Loading...'}
             </p>
           </div>
 
           <div className="flex-1 flex flex-col overflow-hidden min-h-0">
             <div className="bg-slate-800 p-3 rounded-xl border border-slate-700/80 space-y-2 mb-4 flex-shrink-0">
-              <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest">🎓 マイ空間に配布コピー</label>
+              <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest">テンプレートをインポート</label>
               <div className="flex gap-2">
                 <input 
                   type="text" 
-                  placeholder="元ルームID" 
+                  placeholder="対象ルームID" 
                   value={sourceRoomInput} 
                   onChange={e => setSourceRoomInput(e.target.value)} 
                   className="w-full text-xs px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none" 
@@ -190,17 +142,15 @@ export const Workspace = () => {
 
         <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-800 flex-shrink-0">
           <button onClick={() => setIsRoomModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">
-            ⚙️ ルーム設定
+            環境設定
           </button>
           <button onClick={() => setIsFieldModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">
-            🛠️ カスタム拡張
+            カスタム項目
           </button>
         </div>
       </aside>
 
-      {/* 🌲 右側：メインキャンバス */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        
         <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-gray-800">{pages.find(p => p.id === selectedPageId)?.name || 'ワークスペース'}</h2>
@@ -215,7 +165,7 @@ export const Workspace = () => {
                     className="rounded text-blue-600 w-3.5 h-3.5 focus:ring-0 cursor-pointer" 
                   />
                   <span className={`font-bold transition-colors ${room.is_copyable ? 'text-green-600' : 'text-gray-400'}`}>
-                    {room.is_copyable ? '🌐 配布コピー：許可中' : '🔒 配布コピー：禁止中'}
+                    {room.is_copyable ? '複製許可：有効' : '複製許可：無効'}
                   </span>
                 </label>
 
@@ -223,24 +173,26 @@ export const Workspace = () => {
                   onClick={() => navigate(`/workspace/${id}/share`)}
                   className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 rounded-xl border border-slate-700 flex items-center gap-1.5 transition-all shadow-sm"
                 >
-                  📢 共有用URL・QRを発行
+                  共有リンクの発行
                 </button>
               </div>
             )}
           </div>
           {selectedPageId && (
-            <button onClick={() => { setInitialParentId(tasks.length > 0 ? tasks[0].id : 'HEAD'); setIsTaskModalOpen(true); }} className="bg-blue-600 text-white font-bold py-2 px-5 rounded-xl text-sm shadow-sm hover:bg-blue-700">🚀 タスクを追加</button>
+            <button onClick={() => { setInitialParentId(tasks.length > 0 ? tasks[0].id : 'HEAD'); setIsTaskModalOpen(true); }} className="bg-blue-600 text-white font-bold py-2 px-5 rounded-xl text-sm shadow-sm hover:bg-blue-700">
+              タスクを追加
+            </button>
           )}
         </header>
 
         <main className="flex-grow p-6 overflow-auto bg-gray-50">
           <div className="bg-white p-6 rounded-2xl shadow-sm border min-h-full">
             {!selectedPageId ? (
-              <div className="text-center py-24 text-gray-400 text-sm">左のエディタツリービューからロードマップを選択するか、新しく作成してください。</div>
+              <div className="text-center py-24 text-gray-400 text-sm">サイドバーからページを選択するか、新しく作成してください。</div>
             ) : tasks.length === 0 ? (
               <div className="text-center py-24 border-2 border-dashed rounded-xl">
                 <p className="text-gray-400 text-sm mb-3">このページにはまだタスクがありません</p>
-                <button onClick={() => { setInitialParentId('HEAD'); setIsTaskModalOpen(true); }} className="text-blue-600 font-bold text-sm">最初のルートタスクを作る &rarr;</button>
+                <button onClick={() => { setInitialParentId('HEAD'); setIsTaskModalOpen(true); }} className="text-blue-600 font-bold text-sm">ルートタスクを作成する</button>
               </div>
             ) : (
               <Xwrapper>
@@ -261,13 +213,16 @@ export const Workspace = () => {
                         style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
                       >
                         <div className={`absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl ${styles.bar}`} />
-                        <div className="p-3 pt-4">
-                          <div className="text-[10px] text-gray-500 font-mono mb-1 bg-gray-100/80 px-1 py-0.5 rounded text-center truncate">📅 {task.start_date && task.end_date ? `${task.start_date.substring(5)} ➔ ${task.end_date.substring(5)}` : '期間未定'}</div>
+                        <div className="p-3 pt-4 flex-shrink-0">
+                          <div className="text-[10px] text-gray-500 font-mono mb-1 bg-gray-100/80 px-1 py-0.5 rounded text-center truncate">{task.start_date && task.end_date ? `${task.start_date.substring(5)} - ${task.end_date.substring(5)}` : '期間未定'}</div>
                           <h4 className="text-sm font-bold text-gray-800 line-clamp-2 leading-snug">{task.title}</h4>
                         </div>
-                        <div className="px-3 flex-1 overflow-y-auto space-y-1">
+                        
+                        <div className="px-3 flex-1 overflow-y-hidden relative space-y-1">
                           {Object.entries(task.metadata).map(([k, v]) => {
-                            if (k === 'merged_task_ids' || k === 'status') return null;
+                            if (k === 'merged_task_ids' || k === 'status' || k === 'memo') return null;
+                            if (v === '' || v === null || v === undefined) return null;
+
                             const f = fields.find(fd => fd.field_key === k);
                             return (
                               <div key={k} className="text-[9px] bg-white/80 px-1.5 py-0.5 rounded border flex justify-between items-center shadow-xs">
@@ -276,9 +231,40 @@ export const Workspace = () => {
                               </div>
                             );
                           })}
+
+                          {/* 💡 変更: プレビュー用のコンパクトなMarkdownレンダラー */}
+                          {task.metadata.memo && (
+                            <div className="relative text-[9px] bg-slate-50 px-1.5 py-1 rounded border border-slate-200 text-slate-500 shadow-xs mt-1 overflow-hidden max-h-12 leading-tight">
+                              <ReactMarkdown
+                                components={{
+                                  p: ({node, ...props}) => <p className="mb-0.5 last:mb-0" {...props} />,
+                                  h1: ({node, ...props}) => <strong className="block text-[10px] text-slate-700 mb-0.5" {...props} />,
+                                  h2: ({node, ...props}) => <strong className="block text-[10px] text-slate-700 mb-0.5" {...props} />,
+                                  h3: ({node, ...props}) => <strong className="block text-[10px] text-slate-700 mb-0.5" {...props} />,
+                                  ul: ({node, ...props}) => <ul className="list-disc pl-3 mb-0.5 space-y-0.5" {...props} />,
+                                  ol: ({node, ...props}) => <ol className="list-decimal pl-3 mb-0.5 space-y-0.5" {...props} />,
+                                  li: ({node, ...props}) => <li className="pl-0.5" {...props} />,
+                                  code: ({node, className, ...props}) => {
+                                    const isInline = !className?.includes('language-');
+                                    return isInline 
+                                      ? <code className="bg-slate-200 text-pink-600 px-1 py-0.5 rounded text-[8px] font-mono" {...props} />
+                                      : <code className="block bg-slate-800 text-slate-50 p-1 rounded-sm text-[8px] font-mono overflow-hidden whitespace-pre-wrap mt-0.5" {...props} />;
+                                  },
+                                  pre: ({node, ref, ...props}: any) => <div className="m-0" {...props} />,
+                                  blockquote: ({node, ...props}) => <blockquote className="border-l-2 border-slate-300 pl-1.5 text-slate-400 italic mb-0.5" {...props} />
+                                }}
+                              >
+                                {task.metadata.memo}
+                              </ReactMarkdown>
+                              
+                              {/* 📝 下部をグラデーションでフェードアウトさせて省略を表現 */}
+                              <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-slate-50 to-transparent pointer-events-none rounded-b" />
+                            </div>
+                          )}
                         </div>
-                        <div className="p-2 border-t bg-gray-50/50 rounded-b-2xl flex justify-between items-center text-[11px] text-gray-500">
-                          <span className="truncate max-w-[60%]">👤 {task.assignee || '未設定'}</span>
+
+                        <div className="p-2 border-t bg-gray-50/50 rounded-b-2xl flex justify-between items-center text-[11px] text-gray-500 flex-shrink-0">
+                          <span className="truncate max-w-[60%]">{task.assignee || '未設定'}</span>
                           <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] scale-95 ${styles.badge}`}>{taskStatus}</span>
                         </div>
                         
@@ -320,7 +306,7 @@ export const Workspace = () => {
         onClose={() => setIsTaskModalOpen(false)} 
         validateConnection={validateConnection}
         onSubmit={async (title, assignee, start, end, meta, prevId) => {
-          if (!validateConnection(prevId, null)) { alert('❌ 循環参照（ループ）が検知されました'); return; }
+          if (!validateConnection(prevId, null)) { alert('循環参照が検知されました'); return; }
           await addTask({ roomId: id, title, assignee, startDate: start, endDate: end, metadata: meta, chosenPrevTaskId: prevId });
         }} 
         initialParentId={initialParentId} 

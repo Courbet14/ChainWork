@@ -1,7 +1,6 @@
-// ★ src/hooks/useFormFields.ts の全体を以下に差し替え
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { FormField } from '../types'; // 💡 グローバルの共通型定義から吸い上げる
+import type { FormField } from '../types';
 
 export const useFormFields = (roomId: string | undefined) => {
   const [fields, setFields] = useState<FormField[]>([]);
@@ -27,7 +26,7 @@ export const useFormFields = (roomId: string | undefined) => {
       fetchFields();
     } catch (err) {
       console.error(err);
-      alert('フィールドの追加に失敗しました（キーの重複など）');
+      alert('フィールドの追加に失敗しました。キーが重複している可能性があります。');
     }
   };
 

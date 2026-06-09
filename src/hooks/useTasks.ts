@@ -15,7 +15,10 @@ export const useTasks = (pageId: string | null) => {
       .from('tasks')
       .select('*')
       .eq('page_id', pageId);
-    if (!error && data) setTasks(data as Task[]);
+      
+    if (!error && data) {
+      setTasks(data as Task[]);
+    }
   }, [pageId]);
 
   const addTask = async ({
@@ -26,21 +29,19 @@ export const useTasks = (pageId: string | null) => {
     if (!roomId || !pageId) return;
     setIsLoading(true);
     try {
-      const { error } = await supabase.from('tasks').insert([
-        {
-          room_id: roomId,
-          page_id: pageId,
-          prev_task_id: chosenPrevTaskId,
-          title,
-          assignee: assignee || null,
-          start_date: startDate || null,
-          end_date: endDate || null,
-          metadata
-        }
-      ]);
+      const { error } = await supabase.from('tasks').insert([{
+        room_id: roomId,
+        page_id: pageId,
+        prev_task_id: chosenPrevTaskId,
+        title,
+        assignee: assignee || null,
+        start_date: startDate || null,
+        end_date: endDate || null,
+        metadata
+      }]);
       if (error) throw error;
     } catch (err) {
-      console.error(err);
+      console.error('Failed to add task:', err);
     } finally {
       setIsLoading(false);
     }
@@ -51,7 +52,7 @@ export const useTasks = (pageId: string | null) => {
       const { error } = await supabase.from('tasks').update(updates).eq('id', id);
       if (error) throw error;
     } catch (err) {
-      console.error(err);
+      console.error('Failed to update task:', err);
     }
   };
 
@@ -62,17 +63,19 @@ export const useTasks = (pageId: string | null) => {
       if (error) throw error;
       fetchTasks();
     } catch (err) {
-      console.error(err);
+      console.error('Failed to delete task:', err);
     }
   };
 
   useEffect(() => {
     fetchTasks();
     if (!pageId) return;
+    
     const channel = supabase
       .channel(`realtime-tasks-${pageId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `page_id=eq.${pageId}` }, () => { fetchTasks(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `page_id=eq.${pageId}` }, fetchTasks)
       .subscribe();
+      
     return () => { supabase.removeChannel(channel); };
   }, [pageId, fetchTasks]);
 

@@ -3,7 +3,8 @@ export type TaskStatus = '未着手' | '着手中' | '終了';
 export type TaskMetadata = {
   status?: TaskStatus;
   merged_task_ids?: string[];
-  [key: string]: any; // カスタムフィールド用の動的プロパティを許容
+  memo?: string;
+  [key: string]: any;
 };
 
 export type Room = {
