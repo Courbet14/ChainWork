@@ -21,14 +21,9 @@ export const Workspace = () => {
   const navigate = useNavigate();
   const updateXarrow = useXarrow();
 
+  // 💡 useRoom から認証状態（isAuth）とパスワード検証関数（verifyPassword）を取得
   const { room, isAuth, verifyPassword, toggleCopyable, updateRoom, cloneWholeRoom, isLoading: isRoomLoading } = useRoom(id);
-  
-  // 💡 クリック移動用のアクション群をスマートに展開
-  const { 
-    pages, selectedPageId, setSelectedPageId, updateItemName, deleteItem, 
-    createPage, createFolder, moveItemUp, moveItemDown, moveItemOut, moveItemIn 
-  } = useTaskPages(id);
-  
+  const { pages, selectedPageId, setSelectedPageId, updateItemName, deleteItem, createPage, createFolder, moveItemUp, moveItemDown, moveItemOut, moveItemIn } = useTaskPages(id);
   const { fields } = useFormFields(id);
   const { tasks, addTask, updateTask, deleteTask, isLoading: isTaskLoading } = useTasks(selectedPageId);
   const { positions, canvasHeight, canvasWidth } = useWorkspaceLayout(tasks);
@@ -41,12 +36,16 @@ export const Workspace = () => {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [sourceRoomInput, setSourceRoomInput] = useState('');
 
+  // 💡 パスワードゲート専用のローカルステート
+  const [passwordInput, setPasswordInput] = useState('');
+  const [authError, setAuthError] = useState(false);
+
   useEffect(() => {
     const timer = setTimeout(() => { updateXarrow(); }, 60);
     return () => clearTimeout(timer);
   }, [tasks, positions, updateXarrow, selectedPageId]);
 
-  if (!id) return <div className="p-6 text-red-500">ルームIDが見つかりません。</div>;
+  if (!id) return <div className="p-6 text-red-500 font-mono">ルームIDが見つかりません。</div>;
 
   const handleAddFromNode = (parentId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -54,15 +53,11 @@ export const Workspace = () => {
     setIsTaskModalOpen(true);
   };
 
-const handleExecuteClone = async () => {
-    // 今いるルームID（id）と入力値があるかチェック
+  const handleExecuteClone = async () => {
     if (!sourceRoomInput.trim() || !id) return;
-    
-    // 💡 解決策：第2引数には、新しく作ったIDではなく「今いるルームのID（id）」をそのまま流し込む！
     const ok = await cloneWholeRoom(sourceRoomInput.trim(), id);
-    
     if (ok) {
-      setSourceRoomInput(''); // コピーが成功したら入力欄を空にする
+      setSourceRoomInput('');
     }
   };
 
@@ -75,6 +70,70 @@ const handleExecuteClone = async () => {
     }
   };
 
+  // 💡 パスワード認証を実行するハンドラー
+  const handleAuthSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError(false);
+    
+    const success = verifyPassword(passwordInput);
+    if (success) {
+      setPasswordInput('');
+    } else {
+      setAuthError(true);
+    }
+  };
+
+  // 🔐 【核心修正】未認証（isAuth === false）かつ、部屋データがロード済みの場合は、画面丸ごとロックして「パスワード入力ゲート」を表示する！
+  if (!isRoomLoading && room && !isAuth) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-slate-950 text-white font-sans">
+        <div className="w-full max-w-md p-8 bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-16 h-16 bg-blue-600/10 border border-blue-500/20 text-blue-400 rounded-2xl flex items-center justify-center text-2xl mx-auto shadow-inner">
+            🔒
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-xl font-black tracking-wide text-slate-100">ルーム保護</h1>
+            <p className="text-xs text-slate-400 font-mono">Room ID: {id}</p>
+            <p className="text-sm font-bold text-blue-400 mt-2">📂 {room.name}</p>
+          </div>
+          
+          <p className="text-xs text-slate-400 leading-relaxed px-4">
+            この空間は編集パスワードによって保護されています。<br />編集・閲覧を再開するにはパスワードを入力してください。
+          </p>
+
+          <form onSubmit={handleAuthSubmit} className="space-y-3 text-left">
+            <div>
+              <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1.5 pl-1">編集用パスワード</label>
+              <input 
+                type="password" 
+                placeholder="••••••••" 
+                value={passwordInput}
+                onChange={e => setPasswordInput(e.target.value)}
+                autoFocus
+                className={`w-full bg-slate-950 text-slate-200 border rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors
+                  ${authError ? 'border-red-500 focus:border-red-500 bg-red-950/10' : 'border-slate-800 focus:border-blue-500'}`}
+              />
+            </div>
+
+            {authError && (
+              <p className="text-[11px] text-red-400 font-medium pl-1 animate-bounce">
+                ⚠️ パスワードが一致しません。もう一度お試しください。
+              </p>
+            )}
+
+            <button 
+              type="submit" 
+              className="w-full bg-blue-600 hover:bg-blue-500 active:scale-98 text-white font-bold text-sm py-3 rounded-xl transition-all shadow-lg shadow-blue-600/10 mt-2"
+            >
+              認証してロックを解除
+            </button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // 🟢 認証済み、またはパスワードがかかっていない通常の画面描画
   return (
     <div className="relative flex h-screen bg-gray-100 overflow-hidden text-gray-800">
       
@@ -92,69 +151,58 @@ const handleExecuteClone = async () => {
             </p>
           </div>
 
-          {isAuth ? (
-            <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-              <div className="bg-slate-800 p-3 rounded-xl border border-slate-700/80 space-y-2 mb-4 flex-shrink-0">
-                <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest">🎓 マイ空間に配布コピー</label>
-                <div className="flex gap-2">
-                  <input 
-                    type="text" 
-                    placeholder="元ルームID" 
-                    value={sourceRoomInput} 
-                    onChange={e => setSourceRoomInput(e.target.value)} 
-                    className="w-full text-xs px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none" 
-                  />
-                  <button type="button" onClick={handleExecuteClone} disabled={isRoomLoading || !sourceRoomInput.trim()} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 rounded-lg font-bold shadow-md transition-colors flex-shrink-0">
-                    複製
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex-1 min-h-0 overflow-hidden">
-                {/* 💡 ドラッグ関数を廃止し、クリック専用のスマート矢印関数をバインド */}
-                <FileTreeEditor 
-                  pages={pages}
-                  selectedPageId={selectedPageId}
-                  setSelectedPageId={setSelectedPageId}
-                  onRename={updateItemName}
-                  onDelete={deleteItem}
-                  onAddChild={handleAddChildToTree}
-                  onMoveUp={moveItemUp}
-                  onMoveDown={moveItemDown}
-                  onMoveOut={moveItemOut}
-                  onMoveIn={moveItemIn}
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+            <div className="bg-slate-800 p-3 rounded-xl border border-slate-700/80 space-y-2 mb-4 flex-shrink-0">
+              <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest">🎓 マイ空間に配布コピー</label>
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  placeholder="元ルームID" 
+                  value={sourceRoomInput} 
+                  onChange={e => setSourceRoomInput(e.target.value)} 
+                  className="w-full text-xs px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none" 
                 />
+                <button type="button" onClick={handleExecuteClone} disabled={isRoomLoading || !sourceRoomInput.trim()} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 rounded-lg font-bold shadow-md transition-colors flex-shrink-0">
+                  複製
+                </button>
               </div>
             </div>
-          ) : (
-            <div className="py-12 text-center space-y-3 bg-slate-800/40 rounded-xl border border-slate-800 p-4 animate-pulse">
-              <span className="text-3xl">🔒</span>
-              <p className="text-xs text-slate-400 font-medium">閲覧制限が有効です</p>
+
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <FileTreeEditor 
+                pages={pages}
+                selectedPageId={selectedPageId}
+                setSelectedPageId={setSelectedPageId}
+                onRename={updateItemName}
+                onDelete={deleteItem}
+                onAddChild={handleAddChildToTree}
+                onMoveUp={moveItemUp}
+                onMoveDown={moveItemDown}
+                onMoveOut={moveItemOut}
+                onMoveIn={moveItemIn}
+              />
             </div>
-          )}
+          </div>
         </div>
 
-        {isAuth && (
-          <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-800 flex-shrink-0">
-            <button onClick={() => setIsRoomModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">
-              ⚙️ ルーム設定
-            </button>
-            <button onClick={() => setIsFieldModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">
-              🛠️ カスタム拡張
-            </button>
-          </div>
-        )}
+        <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-800 flex-shrink-0">
+          <button onClick={() => setIsRoomModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">
+            ⚙️ ルーム設定
+          </button>
+          <button onClick={() => setIsFieldModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">
+            🛠️ カスタム拡張
+          </button>
+        </div>
       </aside>
 
       {/* 🌲 右側：メインキャンバス */}
-      <div className={`flex-1 flex flex-col overflow-hidden transition-all duration-700 
-        ${!isAuth ? 'filter blur-sm opacity-30 select-none pointer-events-none' : 'pointer-events-auto'}`}>
+      <div className="flex-1 flex flex-col overflow-hidden">
         
         <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-gray-800">{pages.find(p => p.id === selectedPageId)?.name || 'ワークスペース'}</h2>
             
-            {isAuth && room && (
+            {room && (
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 text-xs bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full cursor-pointer hover:bg-gray-100 select-none transition-all shadow-xs">
                   <input 
@@ -177,7 +225,7 @@ const handleExecuteClone = async () => {
               </div>
             )}
           </div>
-          {isAuth && selectedPageId && (
+          {selectedPageId && (
             <button onClick={() => { setInitialParentId(tasks.length > 0 ? tasks[0].id : 'HEAD'); setIsTaskModalOpen(true); }} className="bg-blue-600 text-white font-bold py-2 px-5 rounded-xl text-sm shadow-sm hover:bg-blue-700">🚀 タスクを追加</button>
           )}
         </header>
@@ -189,7 +237,7 @@ const handleExecuteClone = async () => {
             ) : tasks.length === 0 ? (
               <div className="text-center py-24 border-2 border-dashed rounded-xl">
                 <p className="text-gray-400 text-sm mb-3">このページにはまだタスクがありません</p>
-                {isAuth && <button onClick={() => { setInitialParentId('HEAD'); setIsTaskModalOpen(true); }} className="text-blue-600 font-bold text-sm">最初のルートタスクを作る &rarr;</button>}
+                <button onClick={() => { setInitialParentId('HEAD'); setIsTaskModalOpen(true); }} className="text-blue-600 font-bold text-sm">最初のルートタスクを作る &rarr;</button>
               </div>
             ) : (
               <Xwrapper>
@@ -231,15 +279,13 @@ const handleExecuteClone = async () => {
                           <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] scale-95 ${styles.badge}`}>{taskStatus}</span>
                         </div>
                         
-                        {isAuth && (
-                          <button 
-                            type="button"
-                            onClick={(e) => handleAddFromNode(task.id, e)} 
-                            className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all font-bold shadow-md z-30"
-                          >
-                            ＋
-                          </button>
-                        )}
+                        <button 
+                          type="button"
+                          onClick={(e) => handleAddFromNode(task.id, e)} 
+                          className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all font-bold shadow-md z-30"
+                        >
+                          ＋
+                        </button>
                       </div>
                     );
                   })}
