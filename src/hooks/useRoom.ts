@@ -6,8 +6,7 @@ export const useRoom = (roomId: string | undefined) => {
   const [isAuth, setIsAuth] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
-  const STORAGE_KEY = `chainwork_auth_${roomId}`;
-  const LEASE_DURATION = 24 * 60 * 60 * 1000;
+  // 🗑️ ローカルストレージ関連の変数を全削除！
 
   const fetchRoom = useCallback(async () => {
     if (!roomId) return;
@@ -15,32 +14,34 @@ export const useRoom = (roomId: string | undefined) => {
     try {
       const { data, error } = await supabase
         .from('rooms')
-        .select('*')
+        .select('name, is_copyable')
         .eq('id', roomId)
         .maybeSingle();
 
-      if (error) throw error;
       setRoom(data);
 
       if (data) {
-        if (!data.edit_password) {
+        // 💡 新しい認証チェック: パスワードを読むのではなく、自分がメンバーかDBに聞く
+        const { data: memberData } = await supabase
+          .from('room_members')
+          .select('room_id')
+          .eq('room_id', roomId)
+          .maybeSingle();
+
+        if (memberData) {
+          // 既に許可リスト(room_members)に自分のUIDが載っていれば、即座に入室許可！
           setIsAuth(true);
         } else {
-          const cachedAuth = localStorage.getItem(STORAGE_KEY);
-          if (cachedAuth) {
-            const { password, expiry } = JSON.parse(cachedAuth);
-            if (Date.now() < expiry && data.edit_password === password) {
-              setIsAuth(true);
-            } else {
-              localStorage.removeItem(STORAGE_KEY);
-            }
-          }
+          // メンバーではない場合、パスワードなしのオープンな部屋か確認するために空でアクセスを試みる
+          const { data: isSuccess } = await supabase.rpc('join_room', { p_room_id: roomId, p_password: '' });
+          if (isSuccess) setIsAuth(true);
         }
-
+        
+        // 閲覧履歴（最近開いたルーム）の保存（これは機密情報ではないので残します）
         const historyRaw = localStorage.getItem('chainwork_room_history');
         const history = historyRaw ? JSON.parse(historyRaw) : [];
-        const filtered = history.filter((h: any) => h.id !== data.id);
-        const newHistory = [{ id: data.id, name: data.name || data.id, accessedAt: Date.now() }, ...filtered];
+        const filtered = history.filter((h: any) => h.id !== roomId);
+        const newHistory = [{ id: roomId, name: data.name || roomId, accessedAt: Date.now() }, ...filtered];
         localStorage.setItem('chainwork_room_history', JSON.stringify(newHistory.slice(0, 5)));
       }
     } catch (err) {
@@ -48,17 +49,27 @@ export const useRoom = (roomId: string | undefined) => {
     } finally {
       setIsLoading(false);
     }
-  }, [roomId, STORAGE_KEY]);
+  }, [roomId]);
 
   useEffect(() => {
     fetchRoom();
   }, [fetchRoom]);
 
-  const verifyPassword = (input: string) => {
-    if (room && room.edit_password === input) {
+  const verifyPassword = async (input: string) => {
+    const { data: isSuccess, error } = await supabase.rpc('join_room', { 
+      p_room_id: roomId, 
+      p_password: input 
+    });
+
+    if (error) {
+      console.error('Auth error:', error);
+      return false;
+    }
+
+    if (isSuccess) {
       setIsAuth(true);
-      const authData = { password: input, expiry: Date.now() + LEASE_DURATION };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(authData));
+      // 🗑️ ここにあった localStorage へのパスワード保存処理を完全削除！
+      // Supabaseのセッション(JWT)と、DBの room_members テーブルが証明書になります。
       return true;
     }
     return false;
@@ -70,9 +81,7 @@ export const useRoom = (roomId: string | undefined) => {
       const { error } = await supabase.from('rooms').update({ is_copyable: allowed }).eq('id', roomId);
       if (error) throw error;
       setRoom((prev: any) => prev ? { ...prev, is_copyable: allowed } : null);
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const updateRoom = async (newName: string, newPassword: string | null) => {
@@ -80,20 +89,16 @@ export const useRoom = (roomId: string | undefined) => {
     try {
       const { error } = await supabase
         .from('rooms')
-        .update({ name: newName.trim(), edit_password: newPassword ? newPassword.trim() || null : null })
+        .update({ name: newName.trim(), edit_password: newPassword?.trim() || null })
         .eq('id', roomId);
       if (error) throw error;
       
-      setRoom((prev: any) => prev ? { ...prev, name: newName.trim(), edit_password: newPassword ? newPassword.trim() || null : null } : null);
+      setRoom((prev: any) => prev ? { ...prev, name: newName.trim() } : null);
       if (!newPassword) {
         setIsAuth(true);
-        localStorage.removeItem(STORAGE_KEY);
       }
       return true;
-    } catch (err) {
-      console.error(err);
-      return false;
-    }
+    } catch (err) { console.error(err); return false; }
   };
 
   const cloneWholeRoom = async (sourceRoomId: string, newRoomId: string) => {
@@ -114,6 +119,21 @@ export const useRoom = (roomId: string | undefined) => {
       if (sourceRoom && !sourceRoom.is_copyable) {
         alert('このルームは管理者によってコピーが制限されています。');
         return false;
+      }
+
+      const { data: sourceFields, error: fieldsError } = await supabase
+        .from('form_fields')
+        .select('*')
+        .eq('room_id', sourceRoomId);
+
+      if (!fieldsError && sourceFields && sourceFields.length > 0) {
+        const newFields = sourceFields.map(f => ({
+          room_id: newRoomId,
+          field_key: f.field_key,
+          label: f.label,
+          field_type: f.field_type
+        }));
+        await supabase.from('form_fields').insert(newFields);
       }
 
       const { data: sourcePages, error: pagesError } = await supabase

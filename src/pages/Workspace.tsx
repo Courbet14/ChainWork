@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import _Xarrow, { Xwrapper, useXarrow } from 'react-xarrows';
-import ReactMarkdown from 'react-markdown'; // 💡 追加: プレビュー用Markdownレンダラー
+import ReactMarkdown from 'react-markdown';
 
 import { AddFieldForm } from '../components/AddFieldForm';
 import { AddTaskForm } from '../components/AddTaskForm';
@@ -72,11 +72,16 @@ export const Workspace = () => {
     }
   };
 
-  const handleAuthSubmit = (e: React.FormEvent) => {
+  // 💡 修正ポイント：verifyPasswordが非同期(async)になったので、awaitで待つように変更
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(false);
-    if (verifyPassword(passwordInput)) setPasswordInput('');
-    else setAuthError(true);
+    const success = await verifyPassword(passwordInput);
+    if (success) {
+      setPasswordInput('');
+    } else {
+      setAuthError(true);
+    }
   };
 
   if (!isRoomLoading && room && !isAuth) {
@@ -232,7 +237,6 @@ export const Workspace = () => {
                             );
                           })}
 
-                          {/* 💡 変更: プレビュー用のコンパクトなMarkdownレンダラー */}
                           {task.metadata.memo && (
                             <div className="relative text-[9px] bg-slate-50 px-1.5 py-1 rounded border border-slate-200 text-slate-500 shadow-xs mt-1 overflow-hidden max-h-12 leading-tight">
                               <ReactMarkdown
@@ -257,7 +261,6 @@ export const Workspace = () => {
                                 {task.metadata.memo}
                               </ReactMarkdown>
                               
-                              {/* 📝 下部をグラデーションでフェードアウトさせて省略を表現 */}
                               <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-slate-50 to-transparent pointer-events-none rounded-b" />
                             </div>
                           )}
