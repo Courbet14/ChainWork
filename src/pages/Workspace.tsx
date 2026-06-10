@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import _Xarrow, { Xwrapper, useXarrow } from 'react-xarrows';
 import ReactMarkdown from 'react-markdown';
@@ -46,6 +46,38 @@ export const Workspace = () => {
     return () => clearTimeout(timer);
   }, [tasks, positions, updateXarrow, selectedPageId]);
 
+  // 💡 UX向上：現在のページ内のタスク統計情報を計算する（リアルタイム集計）
+  const taskStats = useMemo(() => {
+    const total = tasks.length;
+    if (total === 0) return { total: 0, todo: 0, doing: 0, done: 0, rate: 0, earliestTask: null, daysLeft: null };
+
+    const todo = tasks.filter(t => (t.metadata?.status || '未着手') === '未着手').length;
+    const doing = tasks.filter(t => t.metadata?.status === '着手中').length;
+    const done = tasks.filter(t => t.metadata?.status === '終了').length;
+    const rate = Math.round((done / total) * 100);
+
+    // 期限（end_date）が設定されていて、かつ未完了（終了以外）のタスクの中から一番早いものを探す
+    const incompleteTasksWithDue = tasks.filter(t => t.end_date && t.metadata?.status !== '終了');
+    let earliestTask: Task | null = null;
+    let daysLeft: number | null = null;
+
+    if (incompleteTasksWithDue.length > 0) {
+      earliestTask = incompleteTasksWithDue.reduce((earliest, current) => {
+        return new Date(current.end_date!) < new Date(earliest.end_date!) ? current : earliest;
+      }, incompleteTasksWithDue[0]);
+
+      // 残り日数の計算（今日との差分）
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const dueDate = new Date(earliestTask.end_date!);
+      dueDate.setHours(0, 0, 0, 0);
+      const diffTime = dueDate.getTime() - today.getTime();
+      daysLeft = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    return { total, todo, doing, done, rate, earliestTask, daysLeft };
+  }, [tasks]);
+
   if (!id) return <div className="p-6 text-red-500 font-mono">ルームIDが見つかりません。</div>;
 
   const handleAddFromNode = (parentId: string, e: React.MouseEvent) => {
@@ -57,44 +89,25 @@ export const Workspace = () => {
   const handleExecuteClone = async () => {
     if (!sourceRoomInput.trim() || !id) return;
     const ok = await cloneWholeRoom(sourceRoomInput.trim(), id);
-    if (ok) {
-      setSourceRoomInput('');
-      window.location.reload();
-    }
+    if (ok) { setSourceRoomInput(''); window.location.reload(); }
   };
 
   const handleAddChildToTree = async (name: string, isFolder: boolean, parentId: string | null) => {
     if (!id || !name.trim()) return;
-    if (isFolder) {
-      await createFolder(name.trim(), parentId);
-    } else {
-      await createPage(name.trim(), parentId);
-    }
+    if (isFolder) await createFolder(name.trim(), parentId);
+    else await createPage(name.trim(), parentId);
   };
 
-  // 💡 修正ポイント：verifyPasswordが非同期(async)になったので、awaitで待つように変更
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError(false);
     const success = await verifyPassword(passwordInput);
-    if (success) {
-      setPasswordInput('');
-    } else {
-      setAuthError(true);
-    }
+    if (success) setPasswordInput('');
+    else setAuthError(true);
   };
 
   if (!isRoomLoading && room && !isAuth) {
-    return (
-      <PasswordGate 
-        roomId={id} 
-        roomName={room.name} 
-        authError={authError} 
-        passwordInput={passwordInput} 
-        setPasswordInput={setPasswordInput} 
-        onSubmit={handleAuthSubmit} 
-      />
-    );
+    return <PasswordGate roomId={id} roomName={room.name} authError={authError} passwordInput={passwordInput} setPasswordInput={setPasswordInput} onSubmit={handleAuthSubmit} />;
   }
 
   return (
@@ -115,82 +128,45 @@ export const Workspace = () => {
             <div className="bg-slate-800 p-3 rounded-xl border border-slate-700/80 space-y-2 mb-4 flex-shrink-0">
               <label className="block text-[10px] font-bold text-blue-400 uppercase tracking-widest">テンプレートをインポート</label>
               <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  placeholder="対象ルームID" 
-                  value={sourceRoomInput} 
-                  onChange={e => setSourceRoomInput(e.target.value)} 
-                  className="w-full text-xs px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none" 
-                />
-                <button type="button" onClick={handleExecuteClone} disabled={isRoomLoading || !sourceRoomInput.trim()} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 rounded-lg font-bold shadow-md transition-colors flex-shrink-0">
-                  複製
-                </button>
+                <input type="text" placeholder="対象ルームID" value={sourceRoomInput} onChange={e => setSourceRoomInput(e.target.value)} className="w-full text-xs px-3 py-1.5 bg-slate-900 border border-slate-700 rounded-lg text-white focus:outline-none" />
+                <button type="button" onClick={handleExecuteClone} disabled={isRoomLoading || !sourceRoomInput.trim()} className="bg-blue-600 hover:bg-blue-500 text-white text-xs px-3 rounded-lg font-bold shadow-md transition-colors flex-shrink-0">複製</button>
               </div>
             </div>
 
             <div className="flex-1 min-h-0 overflow-hidden">
-              <FileTreeEditor 
-                pages={pages}
-                selectedPageId={selectedPageId}
-                setSelectedPageId={setSelectedPageId}
-                onRename={updateItemName}
-                onDelete={deleteItem}
-                onAddChild={handleAddChildToTree}
-                onMoveUp={moveItemUp}
-                onMoveDown={moveItemDown}
-                onMoveOut={moveItemOut}
-                onMoveIn={moveItemIn}
-              />
+              <FileTreeEditor pages={pages} selectedPageId={selectedPageId} setSelectedPageId={setSelectedPageId} onRename={updateItemName} onDelete={deleteItem} onAddChild={handleAddChildToTree} onMoveUp={moveItemUp} onMoveDown={moveItemDown} onMoveOut={moveItemOut} onMoveIn={moveItemIn} />
             </div>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2 mt-4 pt-3 border-t border-slate-800 flex-shrink-0">
-          <button onClick={() => setIsRoomModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">
-            環境設定
-          </button>
-          <button onClick={() => setIsFieldModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">
-            カスタム項目
-          </button>
+          <button onClick={() => setIsRoomModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">環境設定</button>
+          <button onClick={() => setIsFieldModalOpen(true)} className="py-2 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-bold rounded-xl transition-all shadow-sm">カスタム項目</button>
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm">
+      <div className="flex-1 flex flex-col overflow-hidden relative">
+        <header className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between shadow-sm z-10">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-bold text-gray-800">{pages.find(p => p.id === selectedPageId)?.name || 'ワークスペース'}</h2>
             
             {room && (
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 text-xs bg-gray-50 border border-gray-200 px-3 py-1.5 rounded-full cursor-pointer hover:bg-gray-100 select-none transition-all shadow-xs">
-                  <input 
-                    type="checkbox" 
-                    checked={room.is_copyable} 
-                    onChange={e => toggleCopyable(e.target.checked)} 
-                    className="rounded text-blue-600 w-3.5 h-3.5 focus:ring-0 cursor-pointer" 
-                  />
-                  <span className={`font-bold transition-colors ${room.is_copyable ? 'text-green-600' : 'text-gray-400'}`}>
-                    {room.is_copyable ? '複製許可：有効' : '複製許可：無効'}
-                  </span>
+                  <input type="checkbox" checked={room.is_copyable} onChange={e => toggleCopyable(e.target.checked)} className="rounded text-blue-600 w-3.5 h-3.5 focus:ring-0 cursor-pointer" />
+                  <span className={`font-bold transition-colors ${room.is_copyable ? 'text-green-600' : 'text-gray-400'}`}>{room.is_copyable ? '複製許可：有効' : '複製許可：無効'}</span>
                 </label>
-
-                <button
-                  onClick={() => navigate(`/workspace/${id}/share`)}
-                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 rounded-xl border border-slate-700 flex items-center gap-1.5 transition-all shadow-sm"
-                >
-                  共有リンクの発行
-                </button>
+                <button onClick={() => navigate(`/workspace/${id}/share`)} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 rounded-xl border border-slate-700 flex items-center gap-1.5 transition-all shadow-sm">共有リンクの発行</button>
               </div>
             )}
           </div>
           {selectedPageId && (
-            <button onClick={() => { setInitialParentId(tasks.length > 0 ? tasks[0].id : 'HEAD'); setIsTaskModalOpen(true); }} className="bg-blue-600 text-white font-bold py-2 px-5 rounded-xl text-sm shadow-sm hover:bg-blue-700">
-              タスクを追加
-            </button>
+            <button onClick={() => { setInitialParentId(tasks.length > 0 ? tasks[0].id : 'HEAD'); setIsTaskModalOpen(true); }} className="bg-blue-600 text-white font-bold py-2 px-5 rounded-xl text-sm shadow-sm hover:bg-blue-700">タスクを追加</button>
           )}
         </header>
 
-        <main className="flex-grow p-6 overflow-auto bg-gray-50">
+        {/* 💡 バーをフローティングさせるため下部余白を追加（pb-28） */}
+        <main className="flex-grow p-6 overflow-auto bg-gray-50 pb-28">
           <div className="bg-white p-6 rounded-2xl shadow-sm border min-h-full">
             {!selectedPageId ? (
               <div className="text-center py-24 text-gray-400 text-sm">サイドバーからページを選択するか、新しく作成してください。</div>
@@ -260,7 +236,6 @@ export const Workspace = () => {
                               >
                                 {task.metadata.memo}
                               </ReactMarkdown>
-                              
                               <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-slate-50 to-transparent pointer-events-none rounded-b" />
                             </div>
                           )}
@@ -271,13 +246,7 @@ export const Workspace = () => {
                           <span className={`px-1.5 py-0.5 rounded-md font-bold text-[9px] scale-95 ${styles.badge}`}>{taskStatus}</span>
                         </div>
                         
-                        <button 
-                          type="button"
-                          onClick={(e) => handleAddFromNode(task.id, e)} 
-                          className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all font-bold shadow-md z-30"
-                        >
-                          ＋
-                        </button>
+                        <button type="button" onClick={(e) => handleAddFromNode(task.id, e)} className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 hover:scale-110 transition-all font-bold shadow-md z-30">＋</button>
                       </div>
                     );
                   })}
@@ -296,6 +265,84 @@ export const Workspace = () => {
             )}
           </div>
         </main>
+
+        {/* 💡 🚀 新機能：インテリジェント・サマリーダッシュボードバー */}
+        {selectedPageId && taskStats.total > 0 && (
+          <div className="absolute bottom-6 left-1/2 -translate-x-1/2 w-full max-w-4xl bg-slate-900/95 backdrop-blur-md border border-slate-800 rounded-2xl shadow-2xl p-4 z-40 flex items-center justify-between text-slate-200 select-none animate-in fade-in slide-in-from-bottom-4 duration-300">
+            
+            {/* 1. 進捗率（プログレスバー） */}
+            <div className="flex flex-col w-1/3 pr-6 border-r border-slate-800">
+              <div className="flex justify-between items-end mb-1.5">
+                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">ページ完了率</span>
+                <span className="text-lg font-black text-emerald-400 font-mono">{taskStats.rate}%</span>
+              </div>
+              <div className="w-full bg-slate-800 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-700/50">
+                <div 
+                  className="bg-gradient-to-r from-teal-500 to-emerald-500 h-full rounded-full transition-all duration-500 shadow-sm"
+                  style={{ width: `${taskStats.rate}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 2. タスク内訳のステータスバッジ */}
+            <div className="flex items-center justify-center gap-4 px-6 border-r border-slate-800 flex-1">
+              <div className="text-center">
+                <div className="text-[10px] font-bold text-slate-400 mb-0.5">未着手</div>
+                <div className="bg-slate-800 text-slate-300 font-mono font-bold px-2.5 py-0.5 text-xs rounded-md border border-slate-700">{taskStats.todo}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] font-bold text-amber-400 mb-0.5">着手中</div>
+                <div className="bg-amber-950/40 text-amber-400 font-mono font-bold px-2.5 py-0.5 text-xs rounded-md border border-amber-900/60">{taskStats.doing}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] font-bold text-emerald-400 mb-0.5">終了</div>
+                <div className="bg-emerald-950/40 text-emerald-400 font-mono font-bold px-2.5 py-0.5 text-xs rounded-md border border-emerald-900/60">{taskStats.done}</div>
+              </div>
+              <div className="text-center">
+                <div className="text-[10px] font-bold text-slate-400 mb-0.5">合計</div>
+                <div className="bg-slate-700 text-white font-mono font-bold px-2.5 py-0.5 text-xs rounded-md">{taskStats.total} <span className="text-[9px] text-slate-300">件</span></div>
+              </div>
+            </div>
+
+            {/* 3. 一番早い期限タスク（直近のデッドライン） */}
+            <div className="flex flex-col w-1/3 pl-6 justify-center">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1 block">直近の締め切り</span>
+              {taskStats.earliestTask ? (
+                <div className="flex items-center justify-between gap-2">
+                  <div className="truncate max-w-[60%]">
+                    <div className="text-xs font-bold text-white truncate">{taskStats.earliestTask.title}</div>
+                    <div className="text-[10px] text-slate-400 font-mono mt-0.5">{taskStats.earliestTask.end_date}</div>
+                  </div>
+                  
+                  {/* カウントダウンバッジの出し分け */}
+                  {taskStats.daysLeft !== null && (
+                    taskStats.daysLeft < 0 ? (
+                      <span className="bg-rose-500/20 text-rose-400 border border-rose-500/30 font-black text-[10px] px-2 py-1 rounded-lg shadow-sm animate-pulse">
+                        期限超過 ({Math.abs(taskStats.daysLeft)}日)
+                      </span>
+                    ) : taskStats.daysLeft === 0 ? (
+                      <span className="bg-amber-500 text-slate-950 font-black text-[10px] px-2 py-1 rounded-lg shadow-sm animate-pulse">
+                        今日が期限！
+                      </span>
+                    ) : taskStats.daysLeft <= 3 ? (
+                      <span className="bg-amber-500/20 text-amber-400 border border-amber-500/30 font-black text-[10px] px-2 py-1 rounded-lg shadow-sm">
+                        あと {taskStats.daysLeft} 日
+                      </span>
+                    ) : (
+                      <span className="bg-slate-800 text-slate-300 border border-slate-700 font-bold text-[10px] px-2 py-1 rounded-lg">
+                        あと {taskStats.daysLeft} 日
+                      </span>
+                    )
+                  )}
+                </div>
+              ) : (
+                <span className="text-xs text-slate-500 font-medium italic">未完了の期限付きタスクなし</span>
+              )}
+            </div>
+
+          </div>
+        )}
+
       </div>
 
       <EditRoomModal room={room} isOpen={isRoomModalOpen} onClose={() => setIsRoomModalOpen(false)} onUpdateRoom={updateRoom} />

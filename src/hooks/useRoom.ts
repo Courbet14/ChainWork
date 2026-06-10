@@ -21,7 +21,6 @@ export const useRoom = (roomId: string | undefined) => {
       setRoom(data);
 
       if (data) {
-        // 💡 新しい認証チェック: パスワードを読むのではなく、自分がメンバーかDBに聞く
         const { data: memberData } = await supabase
           .from('room_members')
           .select('room_id')
@@ -29,15 +28,11 @@ export const useRoom = (roomId: string | undefined) => {
           .maybeSingle();
 
         if (memberData) {
-          // 既に許可リスト(room_members)に自分のUIDが載っていれば、即座に入室許可！
           setIsAuth(true);
         } else {
-          // メンバーではない場合、パスワードなしのオープンな部屋か確認するために空でアクセスを試みる
           const { data: isSuccess } = await supabase.rpc('join_room', { p_room_id: roomId, p_password: '' });
           if (isSuccess) setIsAuth(true);
         }
-        
-        // 閲覧履歴（最近開いたルーム）の保存（これは機密情報ではないので残します）
         const historyRaw = localStorage.getItem('chainwork_room_history');
         const history = historyRaw ? JSON.parse(historyRaw) : [];
         const filtered = history.filter((h: any) => h.id !== roomId);
@@ -68,8 +63,6 @@ export const useRoom = (roomId: string | undefined) => {
 
     if (isSuccess) {
       setIsAuth(true);
-      // 🗑️ ここにあった localStorage へのパスワード保存処理を完全削除！
-      // Supabaseのセッション(JWT)と、DBの room_members テーブルが証明書になります。
       return true;
     }
     return false;
