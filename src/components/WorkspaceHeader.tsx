@@ -4,13 +4,13 @@ import type { TaskPageItem } from '../hooks/useTaskPages';
 import type { Room, Task } from '../types';
 
 type Props = {
-  roomId: string;
-  room: Room | null;
-  pages: TaskPageItem[];
-  selectedPageId: string | null;
-  tasks: Task[];
-  toggleCopyable: (allowed: boolean) => void;
-  onAddTask: (parentId: string) => void;
+    roomId: string;
+    room: Room | null;
+    pages: TaskPageItem[];
+    selectedPageId: string | null;
+    tasks: Task[];
+    toggleCopyable: (allowed: boolean) => void;
+    onAddTask: (parentId: string) => void;
 };
 
 export const WorkspaceHeader = (props: Props) => {
