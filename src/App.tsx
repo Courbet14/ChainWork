@@ -1,12 +1,12 @@
 import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { supabase } from './lib/supabase'; // 💡 追加
+import { supabase } from './lib/supabase';
 import { Home } from './pages/Home';
 import { Workspace } from './pages/Workspace';
 import { ShareClone } from './pages/ShareClone';
 
 function App() {
-  // 💡 アプリが開かれた瞬間に、セッションがなければ匿名ログインを実行
+  // アプリケーション起動時の匿名セッション初期化
   useEffect(() => {
     const initAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();

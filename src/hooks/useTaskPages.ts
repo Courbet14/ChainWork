@@ -10,6 +10,7 @@ export type TaskPageItem = {
   sort_order: number;
 };
 
+// フォルダとページの階層構造(エクスプローラー機能)を管理するフック
 export const useTaskPages = (roomId: string | undefined) => {
   const [pages, setPages] = useState<TaskPageItem[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
@@ -18,6 +19,7 @@ export const useTaskPages = (roomId: string | undefined) => {
   const fetchPages = useCallback(async () => {
     if (!roomId) return;
     setIsLoading(true);
+
     try {
       const { data, error } = await supabase
         .from('task_pages')
@@ -30,13 +32,14 @@ export const useTaskPages = (roomId: string | undefined) => {
       const fetchedData = data || [];
       setPages(fetchedData);
       
+      // 選択中のページが削除された場合などは、最初のページを自動選択する
       setSelectedPageId((prev) => {
         if (prev && fetchedData.some((p) => p.id === prev && !p.is_folder)) return prev;
         const firstPage = fetchedData.find((p) => !p.is_folder);
         return firstPage ? firstPage.id : null;
       });
     } catch (err) {
-      console.error('Failed to fetch pages:', err);
+      console.error('Fetch pages error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -46,6 +49,7 @@ export const useTaskPages = (roomId: string | undefined) => {
     fetchPages();
   }, [fetchPages]);
 
+  // ローカルステートを更新し、バックグラウンドでDBと同期する
   const syncWithDatabase = async (nextPages: TaskPageItem[]) => {
     setPages(nextPages);
     try {
@@ -60,19 +64,27 @@ export const useTaskPages = (roomId: string | undefined) => {
 
   const createItem = async (name: string, isFolder: boolean, parentId: string | null = null) => {
     if (!roomId || !name.trim()) return;
+
     try {
       const siblingCount = pages.filter((p) => p.parent_id === parentId).length;
       const { data, error } = await supabase
         .from('task_pages')
-        .insert([{ room_id: roomId, name: name.trim(), is_folder: isFolder, parent_id: parentId, sort_order: siblingCount }])
+        .insert([{ 
+          room_id: roomId, 
+          name: name.trim(), 
+          is_folder: isFolder, 
+          parent_id: parentId, 
+          sort_order: siblingCount 
+        }])
         .select()
         .single();
 
       if (error) throw error;
+      
       setPages((prev) => [...prev, data]);
       if (!isFolder) setSelectedPageId(data.id);
     } catch (err) {
-      console.error('Failed to create item:', err);
+      console.error('Create item error:', err);
     }
   };
 
@@ -83,7 +95,7 @@ export const useTaskPages = (roomId: string | undefined) => {
       if (error) throw error;
       setPages((prev) => prev.map((p) => (p.id === id ? { ...p, name: newName.trim() } : p)));
     } catch (err) {
-      console.error('Failed to update item name:', err);
+      console.error('Update item name error:', err);
     }
   };
 
@@ -94,9 +106,11 @@ export const useTaskPages = (roomId: string | undefined) => {
       setPages((prev) => prev.filter((p) => p.id !== id));
       setSelectedPageId((prev) => (prev === id ? null : prev));
     } catch (err) {
-      console.error('Failed to delete item:', err);
+      console.error('Delete item error:', err);
     }
   };
+
+  // --- ツリー構造の操作 ---
 
   const moveItemUp = (id: string) => {
     const targetIdx = pages.findIndex((p) => p.id === id);

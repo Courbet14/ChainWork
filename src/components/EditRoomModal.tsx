@@ -7,6 +7,7 @@ type Props = {
   onUpdateRoom: (newName: string, newPassword: string | null) => Promise<boolean>;
 };
 
+// ワークスペース設定変更モーダル
 export const EditRoomModal = ({ room, isOpen, onClose, onUpdateRoom }: Props) => {
   const [roomName, setRoomName] = useState('');
   const [password, setPassword] = useState('');

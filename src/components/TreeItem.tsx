@@ -16,6 +16,7 @@ type TreeItemProps = {
   onMoveIn: (id: string) => void;
 };
 
+// ツリーの各アイテム(フォルダ・ページ)のレンダリング
 export const TreeItem = ({
   item, index, allPages, selectedId, onSelect, onRename, onDelete, onAddChild, onMoveUp, onMoveDown, onMoveOut, onMoveIn
 }: TreeItemProps) => {
@@ -25,11 +26,13 @@ export const TreeItem = ({
   const [showChildInput, setShowChildInput] = useState<false | 'page' | 'folder'>(false);
   const [childName, setChildName] = useState('');
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  
   const menuRef = useRef<HTMLDivElement>(null);
 
   const children = allPages.filter((p) => p.parent_id === item.id);
   const siblings = allPages.filter((p) => p.parent_id === item.parent_id);
 
+  // メニューの外側をクリックした時に閉じる処理
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) setIsMenuOpen(false);
@@ -87,8 +90,10 @@ export const TreeItem = ({
         </div>
       </div>
 
+      {/* コンテキストメニュー */}
       {isMenuOpen && (
         <div ref={menuRef} className="absolute right-2 top-8 w-48 bg-slate-800 border border-slate-700 rounded-xl shadow-xl z-50 py-1.5 overflow-hidden" onClick={e => e.stopPropagation()}>
+          
           <div className="px-2.5 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider">並び替え</div>
           <button onClick={() => { onMoveUp(item.id); setIsMenuOpen(false); }} disabled={index === 0} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-700 disabled:opacity-30 disabled:hover:bg-transparent text-slate-200">
             上に移動
@@ -116,6 +121,7 @@ export const TreeItem = ({
 
           <div className="border-t border-slate-700/60 my-1" />
           <div className="px-2.5 py-1 text-[9px] font-bold text-slate-500 uppercase tracking-wider">管理</div>
+          
           {item.is_folder && (
             <>
               <button onClick={() => { setShowChildInput('page'); setIsMenuOpen(false); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-700 text-slate-200">

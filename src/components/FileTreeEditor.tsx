@@ -15,6 +15,7 @@ type FileTreeEditorProps = {
   onMoveIn: (id: string) => void;
 };
 
+// ファイルツリーの描画とルートレベルの追加制御
 export const FileTreeEditor = ({
   pages, selectedPageId, setSelectedPageId, onRename, onDelete, onAddChild,
   onMoveUp, onMoveDown, onMoveOut, onMoveIn
@@ -45,22 +46,40 @@ export const FileTreeEditor = ({
 
       {showRootInput && (
         <form onSubmit={handleCreateRootSubmit} className="px-1 flex-shrink-0">
-          <input type="text" placeholder={showRootInput === 'folder' ? "フォルダ名..." : "ページ名..."} value={rootName} onChange={e => setRootName(e.target.value)} onBlur={() => setTimeout(() => setShowRootInput(false), 200)} autoFocus className="w-full bg-slate-900 text-slate-200 border border-slate-700 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500" />
+          <input 
+            type="text" 
+            placeholder={showRootInput === 'folder' ? "フォルダ名..." : "ページ名..."} 
+            value={rootName} 
+            onChange={e => setRootName(e.target.value)} 
+            onBlur={() => setTimeout(() => setShowRootInput(false), 200)} 
+            autoFocus 
+            className="w-full bg-slate-900 text-slate-200 border border-slate-700 rounded-xl px-3 py-1.5 text-xs focus:outline-none focus:border-blue-500" 
+          />
         </form>
       )}
 
       <div className="flex-1 overflow-y-auto pr-0.5 space-y-1 min-h-0 rounded-xl flex flex-col justify-between">
         <div className="space-y-1 w-full">
           {rootItems.length === 0 ? (
-            <p className="text-[11px] text-slate-600 px-2 py-6 text-center leading-relaxed">ファイルが存在しません。<br/>上部メニューから作成してください。</p>
+            <p className="text-[11px] text-slate-600 px-2 py-6 text-center leading-relaxed">
+              ファイルが存在しません。<br/>上部メニューから作成してください。
+            </p>
           ) : (
             rootItems.map((item, idx) => (
               <TreeItem
-                key={item.id} item={item} index={idx} allPages={pages}
-                selectedId={selectedPageId} onSelect={setSelectedPageId}
-                onRename={onRename} onDelete={onDelete} onAddChild={onAddChild}
-                onMoveUp={onMoveUp} onMoveDown={onMoveDown}
-                onMoveOut={onMoveOut} onMoveIn={onMoveIn}
+                key={item.id} 
+                item={item} 
+                index={idx} 
+                allPages={pages}
+                selectedId={selectedPageId} 
+                onSelect={setSelectedPageId}
+                onRename={onRename} 
+                onDelete={onDelete} 
+                onAddChild={onAddChild}
+                onMoveUp={onMoveUp} 
+                onMoveDown={onMoveDown}
+                onMoveOut={onMoveOut} 
+                onMoveIn={onMoveIn}
               />
             ))
           )}

@@ -13,12 +13,13 @@ type Props = {
   isLoading: boolean;
 };
 
+// タスク新規作成モーダル
 export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnection, onSubmit, initialParentId = 'HEAD', isLoading }: Props) => {
   const [title, setTitle] = useState('');
   const [assignee, setAssignee] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
-  const [memo, setMemo] = useState(''); // 追加: メモ用ステート
+  const [memo, setMemo] = useState('');
   const [status, setStatus] = useState<TaskStatus>('未着手');
   const [customMetadata, setCustomMetadata] = useState<Record<string, any>>({});
   const [chosenPrevTaskId, setChosenPrevTaskId] = useState<string | 'HEAD'>('HEAD');
@@ -26,12 +27,21 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
 
   const hasRootAlready = tasks.length > 0;
 
+  // モーダルが開かれたときにフォームを初期化
   useEffect(() => {
     if (isOpen) {
-      setTitle(''); setAssignee(''); setStartDate(''); setEndDate(''); setMemo(''); setMergedTaskIds([]); setStatus('未着手');
+      setTitle(''); 
+      setAssignee(''); 
+      setStartDate(''); 
+      setEndDate(''); 
+      setMemo(''); 
+      setMergedTaskIds([]); 
+      setStatus('未着手');
       
       const initialMeta: Record<string, any> = {};
-      formFields.forEach(f => { initialMeta[f.field_key] = f.field_type === 'color' ? '#c7d2fe' : ''; });
+      formFields.forEach(f => { 
+        initialMeta[f.field_key] = f.field_type === 'color' ? '#c7d2fe' : ''; 
+      });
       setCustomMetadata(initialMeta);
       
       setChosenPrevTaskId(initialParentId === 'HEAD' && hasRootAlready ? tasks[0].id : initialParentId);
@@ -54,10 +64,11 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
     e.preventDefault();
     if (!title.trim()) return;
 
+    // メタデータの構築
     const finalMetadata: TaskMetadata = {
       ...customMetadata,
       status,
-      ...(memo.trim() ? { memo: memo.trim() } : {}), // 追加: メモがあれば含める
+      ...(memo.trim() ? { memo: memo.trim() } : {}),
       ...(mergedTaskIds.length > 0 ? { merged_task_ids: mergedTaskIds } : {})
     };
 
@@ -74,11 +85,15 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
       <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-xl border border-gray-100 w-full max-w-2xl relative z-10 max-h-[90vh] overflow-y-auto space-y-4 text-gray-800">
         <h3 className="text-xl font-bold text-gray-800">タスクの追加</h3>
         
+        {/* 先行タスク選択 */}
         <div>
           <label className="block text-xs font-bold text-blue-600 mb-1">先行タスク (親ノード)</label>
           <select 
             value={chosenPrevTaskId} 
-            onChange={(e) => { setChosenPrevTaskId(e.target.value); setMergedTaskIds(prev => prev.filter(id => id !== e.target.value)); }} 
+            onChange={(e) => { 
+              setChosenPrevTaskId(e.target.value); 
+              setMergedTaskIds(prev => prev.filter(id => id !== e.target.value)); 
+            }} 
             className="w-full px-3 py-2 border-2 border-blue-100 bg-blue-50/50 rounded-lg font-medium text-sm"
           >
             {!hasRootAlready ? (
@@ -96,6 +111,7 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
           </select>
         </div>
 
+        {/* 基本情報入力 */}
         <div>
           <label className="block text-xs font-bold text-gray-500 mb-1">ステータス</label>
           <select value={status} onChange={(e) => setStatus(e.target.value as TaskStatus)} className="w-full px-3 py-2 border rounded-lg bg-white text-sm">
@@ -122,13 +138,13 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
             <label className="block text-xs text-gray-500 mb-1">終了日</label>
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full p-2 border rounded-lg bg-white text-sm" />
           </div>
-          {/* 追加: メモ入力欄 */}
           <div className="md:col-span-2">
             <label className="block text-xs text-gray-500 mb-1">メモ</label>
             <textarea value={memo} onChange={e => setMemo(e.target.value)} rows={2} placeholder="タスクに関する補足などを入力" className="w-full p-2 border rounded-lg bg-white text-sm resize-none" />
           </div>
         </div>
 
+        {/* カスタムフィールド入力 */}
         {formFields.length > 0 && (
           <div className="border-t border-gray-100 pt-4">
             <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">カスタムフィールド</h4>
@@ -148,6 +164,7 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
           </div>
         )}
 
+        {/* 合流タスク選択 */}
         {hasRootAlready && availableMergeTasks.length > 0 && (
           <div className="border-t border-gray-100 pt-4">
             <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
@@ -179,6 +196,7 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
           </div>
         )}
 
+        {/* フッターアクション */}
         <div className="flex justify-end gap-2 pt-4 border-t">
           <button type="button" onClick={onClose} className="px-4 py-2 text-gray-500 text-sm">キャンセル</button>
           <button type="submit" disabled={isLoading || !title.trim()} className="bg-blue-600 text-white font-bold py-2 px-6 rounded-lg text-sm">作成</button>
