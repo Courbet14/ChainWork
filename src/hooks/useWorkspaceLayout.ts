@@ -4,6 +4,7 @@ import type { Task } from '../types';
 export type Position = { x: number; y: number };
 export type PositionMap = Record<string, Position>;
 
+// タスクの依存関係(DAG)を解析し、描画用のXY座標を計算するフック
 export const useWorkspaceLayout = (tasks: Task[]) => {
   const { positions, canvasWidth, canvasHeight } = useMemo(() => {
     const map: PositionMap = {};
@@ -13,10 +14,9 @@ export const useWorkspaceLayout = (tasks: Task[]) => {
 
     const childrenMap: Record<string, string[]> = {};
     const rootIds: string[] = [];
-    const taskDict: Record<string, Task> = {};
 
+    // ツリーの親子関係マップを構築
     tasks.forEach((t) => {
-      taskDict[t.id] = t;
       childrenMap[t.id] = [];
     });
 
@@ -30,6 +30,7 @@ export const useWorkspaceLayout = (tasks: Task[]) => {
 
     const levelCounts: Record<number, number> = {};
     
+    // 深さ優先探索で階層(Level)ごとの要素数を数え、座標を割り当てる
     const calculateCoords = (id: string, currentLevel: number) => {
       levelCounts[currentLevel] = (levelCounts[currentLevel] || 0);
 
@@ -49,6 +50,7 @@ export const useWorkspaceLayout = (tasks: Task[]) => {
 
     rootIds.forEach((rootId) => calculateCoords(rootId, 0));
 
+    // キャンバスの最大サイズを決定
     const maxLevel = Object.keys(levelCounts).length;
     const maxItemsInLevel = Math.max(...Object.values(levelCounts), 1);
 

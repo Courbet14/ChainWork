@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Task, TaskMetadata } from '../types';
 
+// タスクのCRUD操作とリアルタイム購読を管理するフック
 export const useTasks = (pageId: string | null) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -11,6 +12,7 @@ export const useTasks = (pageId: string | null) => {
       setTasks([]);
       return;
     }
+    
     const { data, error } = await supabase
       .from('tasks')
       .select('*')
@@ -24,10 +26,17 @@ export const useTasks = (pageId: string | null) => {
   const addTask = async ({
     roomId, title, assignee, startDate, endDate, metadata, chosenPrevTaskId
   }: {
-    roomId: string; title: string; assignee: string; startDate: string; endDate: string; metadata: TaskMetadata; chosenPrevTaskId: string | null;
+    roomId: string; 
+    title: string; 
+    assignee: string; 
+    startDate: string; 
+    endDate: string; 
+    metadata: TaskMetadata; 
+    chosenPrevTaskId: string | null;
   }) => {
     if (!roomId || !pageId) return;
     setIsLoading(true);
+
     try {
       const { error } = await supabase.from('tasks').insert([{
         room_id: roomId,
@@ -39,9 +48,10 @@ export const useTasks = (pageId: string | null) => {
         end_date: endDate || null,
         metadata
       }]);
+      
       if (error) throw error;
     } catch (err) {
-      console.error('Failed to add task:', err);
+      console.error('Add task error:', err);
     } finally {
       setIsLoading(false);
     }
@@ -52,18 +62,19 @@ export const useTasks = (pageId: string | null) => {
       const { error } = await supabase.from('tasks').update(updates).eq('id', id);
       if (error) throw error;
     } catch (err) {
-      console.error('Failed to update task:', err);
+      console.error('Update task error:', err);
     }
   };
 
   const deleteTask = async (id: string) => {
     try {
+      // 削除対象に依存している子タスクの依存関係をNullにリセットする
       await supabase.from('tasks').update({ prev_task_id: null }).eq('prev_task_id', id);
       const { error } = await supabase.from('tasks').delete().eq('id', id);
       if (error) throw error;
       fetchTasks();
     } catch (err) {
-      console.error('Failed to delete task:', err);
+      console.error('Delete task error:', err);
     }
   };
 
@@ -71,12 +82,20 @@ export const useTasks = (pageId: string | null) => {
     fetchTasks();
     if (!pageId) return;
     
+    // SupabaseのRealtimeを使用して変更を検知
     const channel = supabase
       .channel(`realtime-tasks-${pageId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks', filter: `page_id=eq.${pageId}` }, fetchTasks)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'tasks', 
+        filter: `page_id=eq.${pageId}` 
+      }, fetchTasks)
       .subscribe();
       
-    return () => { supabase.removeChannel(channel); };
+    return () => { 
+      supabase.removeChannel(channel); 
+    };
   }, [pageId, fetchTasks]);
 
   return { tasks, addTask, updateTask, deleteTask, isLoading };

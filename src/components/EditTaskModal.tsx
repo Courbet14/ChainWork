@@ -14,9 +14,11 @@ type Props = {
   onDelete: (id: string) => Promise<void>;
 };
 
+// タスク詳細表示および編集用モーダル
 export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose, validateConnection, onUpdate, onDelete }: Props) => {
   const [isEditMode, setIsEditMode] = useState(false);
 
+  // フォームステート
   const [title, setTitle] = useState('');
   const [assignee, setAssignee] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -27,10 +29,10 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
   const [chosenPrevTaskId, setChosenPrevTaskId] = useState<string | 'HEAD'>('HEAD');
   const [mergedTaskIds, setMergedTaskIds] = useState<string[]>([]);
 
+  // タスクデータの初期化
   useEffect(() => {
     if (isOpen && task) {
       setIsEditMode(false);
-
       setTitle(task.title || '');
       setAssignee(task.assignee || '');
       setStartDate(task.start_date || '');
@@ -86,7 +88,6 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
 
   const validParentCandidates = tasks.filter(t => t.id !== task.id && t.prev_task_id !== task.id);
   const availableMergeTasks = validParentCandidates.filter(t => t.id !== chosenPrevTaskId);
-
   const parentTaskName = chosenPrevTaskId !== 'HEAD' ? tasks.find(t => t.id === chosenPrevTaskId)?.title : 'ルートノード';
   const mergedTaskNames = mergedTaskIds.map(id => tasks.find(t => t.id === id)?.title).filter(Boolean);
 
@@ -95,9 +96,7 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
       <div className="absolute inset-0" onClick={onClose} />
       <div className="bg-white p-6 rounded-2xl shadow-xl w-full max-w-2xl relative z-10 max-h-[90vh] overflow-y-auto">
         
-        {/* =========================================
-            モードA: 閲覧（詳細表示）モード
-        ========================================= */}
+        {/* モードA: 閲覧モード */}
         {!isEditMode ? (
           <div className="space-y-6 animate-in fade-in duration-200">
             <div className="flex justify-between items-start gap-4">
@@ -121,7 +120,7 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
               </div>
             </div>
 
-            {/* 💡 変更：Markdownのレンダリング部分 */}
+            {/* Markdownによるメモのプレビュー */}
             {memo && (
               <div>
                 <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">メモ</h4>
@@ -202,12 +201,10 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
           </div>
         ) : (
           
-        /* =========================================
-            モードB: 編集フォームモード
-        ========================================= */
+        /* モードB: 編集モード */
           <div className="animate-in slide-in-from-right-4 fade-in duration-200">
             <h3 className="text-xl font-bold text-gray-800 mb-6 flex items-center gap-2">
-              <span className="text-blue-600">✎</span> タスクの編集
+              タスクの編集
             </h3>
             <form onSubmit={handleSave} className="space-y-4">
               <fieldset disabled={!isAuth} className="space-y-4">
@@ -230,7 +227,9 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
                   <label className="block text-xs font-bold text-gray-600 mb-1">ステータス</label>
                   <div className="flex gap-2">
                     {(['未着手', '着手中', '終了'] as TaskStatus[]).map(s => (
-                      <button key={s} type="button" onClick={() => setStatus(s)} className={`flex-1 py-2 text-xs font-bold border rounded-xl shadow-sm transition-all ${status === s ? 'bg-slate-700 text-white' : 'bg-gray-50 text-gray-500'}`}>{s}</button>
+                      <button key={s} type="button" onClick={() => setStatus(s)} className={`flex-1 py-2 text-xs font-bold border rounded-xl shadow-sm transition-all ${status === s ? 'bg-slate-700 text-white' : 'bg-gray-50 text-gray-500'}`}>
+                        {s}
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -290,8 +289,7 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
                       value={memo} 
                       onChange={e => setMemo(e.target.value)} 
                       rows={5} 
-                      placeholder="# 見出し\n- リスト1\n- リスト2\n\n```\nconst code = 'hello';\n
-```"
+                      placeholder="# 見出し\n- リスト1\n- リスト2\n\n```\nconst code = 'hello';\n```"
                       className="w-full p-3 border rounded-lg bg-gray-50/50 text-sm resize-y font-mono" 
                     />
                   </div>
@@ -313,7 +311,12 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
               </fieldset>
 
               <div className="flex justify-between items-center pt-4 border-t mt-6">
-                {isAuth ? <button type="button" onClick={() => { if(confirm('消去しますか？')) onDelete(task.id).then(onClose); }} className="text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl text-sm font-bold transition-colors">削除</button> : <div />}
+                {isAuth ? (
+                  <button type="button" onClick={() => { if(confirm('消去しますか？')) onDelete(task.id).then(onClose); }} className="text-red-600 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-xl text-sm font-bold transition-colors">
+                    削除
+                  </button>
+                ) : <div />}
+                
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setIsEditMode(false)} className="px-4 py-2 text-gray-500 text-sm hover:bg-gray-50 rounded-xl transition-colors">キャンセル</button>
                   {isAuth && <button type="submit" className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-6 rounded-xl text-sm shadow-md transition-colors">保存</button>}
@@ -322,7 +325,6 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
             </form>
           </div>
         )}
-
       </div>
     </div>
   );
