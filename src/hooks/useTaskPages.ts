@@ -22,7 +22,6 @@ export const useTaskPages = (roomId: string | undefined) => {
     setIsLoading(true);
 
     try {
-      // 1. 現在のルームのページを取得
       const { data: baseData, error } = await supabase
         .from('task_pages')
         .select('*')
@@ -32,11 +31,9 @@ export const useTaskPages = (roomId: string | undefined) => {
       if (error) throw error;
       const basePages = (baseData || []) as TaskPageItem[];
       
-      // 2. リンク設定がされているフォルダを探す
       const linkItems = basePages.filter(p => p.target_room_id);
       let allPages = [...basePages];
 
-      // 3. リンク先のルームのページを取得し、現在のツリーにマウント（結合）する
       for (const link of linkItems) {
         if (!link.target_room_id) continue;
         const { data: linkedData } = await supabase
@@ -48,8 +45,8 @@ export const useTaskPages = (roomId: string | undefined) => {
         if (linkedData) {
           const mountedPages = linkedData.map(p => ({
             ...p,
-            // リンク先のルート階層のものは、リンクフォルダの直下に繋ぎ変える
-            parent_id: p.parent_id === null ? link.id : p.parent_id,
+            // 💡 リンク先のルート階層(!p.parent_id)のものは、リンクフォルダの直下に繋ぎ変える
+            parent_id: !p.parent_id ? link.id : p.parent_id,
             is_mounted: true
           }));
           allPages = [...allPages, ...mountedPages];
@@ -77,11 +74,26 @@ export const useTaskPages = (roomId: string | undefined) => {
   const syncWithDatabase = async (nextPages: TaskPageItem[]) => {
     setPages(nextPages);
     try {
-      const updates = nextPages
-        .filter(p => !p.is_mounted)
-        .map(({ id, room_id, name, is_folder, parent_id, sort_order, target_room_id }) => ({
-          id, room_id, name, is_folder, parent_id, sort_order, target_room_id
-        }));
+      const updates = nextPages.map(p => {
+        let actualParentId = p.parent_id;
+        // 💡 マウントされたアイテムを保存する際、リンクフォルダ直下のものはDB上ではnullに戻してあげる
+        if (p.is_mounted) {
+          const linkParent = nextPages.find(parent => parent.id === p.parent_id);
+          if (linkParent && linkParent.target_room_id === p.room_id) {
+            actualParentId = null;
+          }
+        }
+        return {
+          id: p.id,
+          room_id: p.room_id,
+          name: p.name,
+          is_folder: p.is_folder,
+          parent_id: actualParentId,
+          sort_order: p.sort_order,
+          target_room_id: p.target_room_id || null
+        };
+      });
+
       if (updates.length > 0) {
         await supabase.from('task_pages').upsert(updates);
       }
@@ -94,14 +106,41 @@ export const useTaskPages = (roomId: string | undefined) => {
     if (!roomId || !name.trim()) return;
 
     try {
-      const siblingCount = pages.filter((p) => p.parent_id === parentId).length;
+      // 💡 挿入先のルームIDと親IDを賢く判定するロジック（クロスルーム対応）
+      let targetInsertRoomId = roomId;
+      let actualParentId = parentId;
+
+      if (parentId) {
+        const parentNode = pages.find(p => p.id === parentId);
+        if (parentNode) {
+          if (parentNode.is_mounted) {
+            // リンク先のフォルダ内で作成した場合、リンク先のルームに保存
+            targetInsertRoomId = parentNode.room_id;
+          } else if (parentNode.target_room_id) {
+            // 「リンクフォルダそのもの」の中に作成した場合、リンク先のルームのルート階層に保存
+            targetInsertRoomId = parentNode.target_room_id;
+            actualParentId = null;
+          }
+        }
+      }
+
+      // 挿入先ルームの要素数を取得してソート順を決定
+      let query = supabase.from('task_pages').select('id').eq('room_id', targetInsertRoomId);
+      if (actualParentId === null) {
+        query = query.is('parent_id', null);
+      } else {
+        query = query.eq('parent_id', actualParentId);
+      }
+      const { data: siblings } = await query;
+      const siblingCount = siblings ? siblings.length : 0;
+
       const { data, error } = await supabase
         .from('task_pages')
         .insert([{ 
-          room_id: roomId, 
+          room_id: targetInsertRoomId, 
           name: name.trim(), 
           is_folder: isFolder, 
-          parent_id: parentId, 
+          parent_id: actualParentId, 
           sort_order: siblingCount,
           target_room_id: targetRoomId
         }])
@@ -110,12 +149,10 @@ export const useTaskPages = (roomId: string | undefined) => {
 
       if (error) throw error;
       
-      setPages((prev) => [...prev, data]);
-      if (!isFolder) setSelectedPageId(data.id);
+      // 作成後は必ず再フェッチしてツリー全体を再構築する
+      await fetchPages();
       
-      if (targetRoomId) {
-        fetchPages();
-      }
+      if (!isFolder) setSelectedPageId(data.id);
     } catch (err) {
       console.error('Create item error:', err);
     }
@@ -143,7 +180,7 @@ export const useTaskPages = (roomId: string | undefined) => {
     }
   };
 
-  const moveItemUp = (id: string) => { /* 既存のまま維持 (省略せず元コードを使用) */
+  const moveItemUp = (id: string) => {
     const targetIdx = pages.findIndex((p) => p.id === id);
     if (targetIdx <= 0) return;
     const currentSiblings = pages.filter((p) => p.parent_id === pages[targetIdx].parent_id);
@@ -156,7 +193,7 @@ export const useTaskPages = (roomId: string | undefined) => {
     syncWithDatabase(nextPages.map((p, idx) => ({ ...p, sort_order: idx })));
   };
 
-  const moveItemDown = (id: string) => { /* 既存のまま維持 */
+  const moveItemDown = (id: string) => {
     const targetIdx = pages.findIndex((p) => p.id === id);
     if (targetIdx === -1 || targetIdx === pages.length - 1) return;
     const currentSiblings = pages.filter((p) => p.parent_id === pages[targetIdx].parent_id);
@@ -169,7 +206,7 @@ export const useTaskPages = (roomId: string | undefined) => {
     syncWithDatabase(nextPages.map((p, idx) => ({ ...p, sort_order: idx })));
   };
 
-  const moveItemOut = (id: string) => { /* 既存のまま維持 */
+  const moveItemOut = (id: string) => {
     const nextPages = pages.map((p) => {
       if (p.id !== id) return p;
       const parentFolder = pages.find((pf) => pf.id === p.parent_id);
@@ -178,7 +215,7 @@ export const useTaskPages = (roomId: string | undefined) => {
     syncWithDatabase(nextPages.map((p, idx) => ({ ...p, sort_order: idx })));
   };
 
-  const moveItemIn = (id: string) => { /* 既存のまま維持 */
+  const moveItemIn = (id: string) => {
     const targetIdx = pages.findIndex((p) => p.id === id);
     const currentSiblings = pages.filter((p) => p.parent_id === pages[targetIdx].parent_id);
     const sibIdx = currentSiblings.findIndex((p) => p.id === id);
@@ -188,6 +225,43 @@ export const useTaskPages = (roomId: string | undefined) => {
     const nextPages = pages.map((p) => (p.id === id ? { ...p, parent_id: prevSibling.id } : p));
     syncWithDatabase(nextPages.map((p, idx) => ({ ...p, sort_order: idx })));
   };
+  const createLink = async (name: string, targetRoomId: string) => {
+    if (!roomId || !name.trim() || !targetRoomId.trim()) return false;
+
+    try {
+      // まずパスワードなしでルームに参加（存在確認とパスワード不要部屋のチェック）できるか検証
+      const { data: isSuccess } = await supabase.rpc('join_room', { 
+        p_room_id: targetRoomId.trim(), 
+        p_password: '' 
+      });
+
+      let authenticated = isSuccess;
+
+      // パスワードなしで認証できなかった場合、パスワード入力を要求
+      if (!authenticated) {
+        const password = prompt('対象のワークスペースはパスワード保護されています。パスワードを入力してください:');
+        if (password === null) return false; // キャンセル時
+
+        const { data: isStrictSuccess } = await supabase.rpc('join_room', { 
+          p_room_id: targetRoomId.trim(), 
+          p_password: password 
+        });
+        
+        if (!isStrictSuccess) {
+          alert('パスワードが一致しないため、リンクを生成できません。');
+          return false;
+        }
+      }
+
+      // 認証が成功したため、リンクフォルダを作成
+      await createItem(name, true, null, targetRoomId.trim());
+      return true;
+    } catch (err) {
+      console.error(err);
+      alert('リンク先の認証処理中にエラーが発生しました。');
+      return false;
+    }
+  };
 
   return {
     pages,
@@ -195,7 +269,7 @@ export const useTaskPages = (roomId: string | undefined) => {
     setSelectedPageId,
     createPage: (name: string, parentId: string | null = null) => createItem(name, false, parentId),
     createFolder: (name: string, parentId: string | null = null) => createItem(name, true, parentId),
-    createLink: (name: string, targetRoomId: string) => createItem(name, true, null, targetRoomId),
+    createLink, // 💡 ここで上記の新しい関数を渡すようにします
     updateItemName,
     deleteItem,
     moveItemUp,

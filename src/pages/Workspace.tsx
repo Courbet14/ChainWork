@@ -22,6 +22,7 @@ import { WorkspaceSidebar } from '../components/WorkspaceSidebar';
 import { WorkspaceHeader } from '../components/WorkspaceHeader';
 import { WorkspaceDashboard } from '../components/WorkspaceDashboard';
 import { WorkspaceCanvas } from '../components/WorkspaceCanvas';
+import { TerminalConsole } from '../components/TerminalConsole';
 
 import type { Task } from '../types';
 
@@ -41,7 +42,8 @@ export const Workspace = () => {
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
-  
+  const [isTerminalOpen, setIsTerminalOpen] = useState(false);
+
   const [initialParentId, setInitialParentId] = useState<string | 'HEAD'>('HEAD');
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [sourceRoomInput, setSourceRoomInput] = useState('');
@@ -59,6 +61,9 @@ export const Workspace = () => {
     const timer = setTimeout(() => { updateXarrow(); }, 60);
     return () => clearTimeout(timer);
   }, [tasks, positions, updateXarrow, selectedPageId]);
+
+  
+
 
   if (!id) return <div className="p-6 text-red-500 font-mono">ルームIDが見つかりません。</div>;
 
@@ -130,6 +135,31 @@ export const Workspace = () => {
 
         {/* 4. ダッシュボード */}
         <WorkspaceDashboard selectedPageId={selectedPageId} tasks={tasks} />
+        <button
+          type="button"
+          onClick={() => setIsTerminalOpen(prev => !prev)}
+          className="absolute bottom-0 left-0 w-10 h-10 bg-transparent cursor-default z-50 focus:outline-none"
+          aria-label="Toggle Debug Console"
+        />
+        <TerminalConsole 
+          isOpen={isTerminalOpen} 
+          onClose={() => setIsTerminalOpen(false)} 
+          tasks={tasks}
+          onQuickAdd={async (title) => {
+            await addTask({ 
+              roomId: activeRoomId!, 
+              title, 
+              assignee: 'CLI_USER', 
+              startDate: '', 
+              endDate: '', 
+              metadata: { status: '未着手' }, 
+              chosenPrevTaskId: null 
+            });
+          }}
+          onQuickStatus={async (taskId, nextStatus) => {
+            await updateTask(taskId, { metadata: { ...tasks.find(t => t.id === taskId)?.metadata, status: nextStatus } });
+          }}
+        />
       </div>
 
       {/* --- モーダル群 --- */}
