@@ -16,6 +16,7 @@ type Props = {
   onRenamePage: (id: string, name: string) => Promise<void>;
   onDeletePage: (id: string) => Promise<void>;
   onAddPage: (name: string, isFolder: boolean, parentId: string | null) => Promise<void>;
+  onAddLink: (name: string, targetRoomId: string) => Promise<void>;
   onMoveUp: (id: string) => void;
   onMoveDown: (id: string) => void;
   onMoveOut: (id: string) => void;
@@ -63,6 +64,7 @@ export const WorkspaceSidebar = (props: Props) => {
           </div>
 
           {/* ファイルツリー */}
+          {/* ファイルツリー */}
           <div className="flex-1 min-h-0 overflow-hidden">
             <FileTreeEditor 
               pages={props.pages} 
@@ -71,6 +73,7 @@ export const WorkspaceSidebar = (props: Props) => {
               onRename={props.onRenamePage} 
               onDelete={props.onDeletePage} 
               onAddChild={props.onAddPage} 
+              onAddLink={props.onAddLink}  // 💡 ここを追加してください！
               onMoveUp={props.onMoveUp} 
               onMoveDown={props.onMoveDown} 
               onMoveOut={props.onMoveOut} 

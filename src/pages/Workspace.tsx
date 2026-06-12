@@ -31,12 +31,12 @@ export const Workspace = () => {
 
   // --- 🎣 カスタムフックの呼び出し ---
   const { room, isAuth, verifyPassword, toggleCopyable, updateRoom, cloneWholeRoom, isLoading: isRoomLoading } = useRoom(id);
-  const { pages, selectedPageId, setSelectedPageId, updateItemName, deleteItem, createPage, createFolder, moveItemUp, moveItemDown, moveItemOut, moveItemIn } = useTaskPages(id);
+  const { pages, selectedPageId, setSelectedPageId, updateItemName, deleteItem, createPage, createFolder, createLink, moveItemUp, moveItemDown, moveItemOut, moveItemIn } = useTaskPages(id);
   const { fields } = useFormFields(id);
   const { tasks, addTask, updateTask, deleteTask, isLoading: isTaskLoading } = useTasks(selectedPageId);
   const { positions, canvasHeight, canvasWidth } = useWorkspaceLayout(tasks);
   const { validateConnection } = useChainValidation(tasks);
-
+  
   // --- 📦 ローカルステート（UI開閉制御） ---
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
@@ -49,6 +49,10 @@ export const Workspace = () => {
   // パスワード認証用
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState(false);
+
+  //
+  const activePage = pages.find(p => p.id === selectedPageId);
+  const activeRoomId = activePage ? activePage.room_id : id;
 
   // Xarrowの再描画トラッキング
   useEffect(() => {
@@ -92,6 +96,7 @@ export const Workspace = () => {
         roomId={id} room={room} pages={pages} selectedPageId={selectedPageId} setSelectedPageId={setSelectedPageId}
         sourceRoomInput={sourceRoomInput} setSourceRoomInput={setSourceRoomInput} onExecuteClone={handleExecuteClone}
         isRoomLoading={isRoomLoading} onRenamePage={updateItemName} onDeletePage={deleteItem} onAddPage={handleAddChildToTree}
+        onAddLink={createLink} /* ← 新規追加 */
         onMoveUp={moveItemUp} onMoveDown={moveItemDown} onMoveOut={moveItemOut} onMoveIn={moveItemIn}
         openRoomModal={() => setIsRoomModalOpen(true)} openFieldModal={() => setIsFieldModalOpen(true)}
       />
@@ -132,8 +137,12 @@ export const Workspace = () => {
       <AddFieldForm roomId={id} isOpen={isFieldModalOpen} onClose={() => setIsFieldModalOpen(false)} />
       
       <AddTaskForm 
-        roomId={id} formFields={fields} tasks={tasks} isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} validateConnection={validateConnection} 
-        onSubmit={async (title, assignee, start, end, meta, prevId) => { if (!validateConnection(prevId, null)) { alert('循環参照が検知されました'); return; } await addTask({ roomId: id, title, assignee, startDate: start, endDate: end, metadata: meta, chosenPrevTaskId: prevId }); }} 
+        roomId={activeRoomId!} /* id から activeRoomId に変更 */
+        formFields={fields} tasks={tasks} isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} validateConnection={validateConnection} 
+        onSubmit={async (title, assignee, start, end, meta, prevId) => { 
+          if (!validateConnection(prevId, null)) { alert('循環参照が検知されました'); return; } 
+          await addTask({ roomId: activeRoomId!, title, assignee, startDate: start, endDate: end, metadata: meta, chosenPrevTaskId: prevId }); 
+        }} 
         initialParentId={initialParentId} isLoading={isTaskLoading} 
       />
 

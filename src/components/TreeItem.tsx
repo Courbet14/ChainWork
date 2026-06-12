@@ -72,7 +72,11 @@ export const TreeItem = ({
           ) : (
             <span className="w-3" />
           )}
-          <span className="text-sm flex-shrink-0 text-slate-400">{item.is_folder ? '📂' : '📄'}</span>
+          
+          {/* アイコンの切り替えロジックを追加 */}
+          <span className="text-sm flex-shrink-0 text-slate-400">
+            {item.target_room_id ? '🔗' : item.is_folder ? '📂' : '📄'}
+          </span>
           
           {isEditing ? (
             <form onSubmit={handleRenameSubmit} onClick={e => e.stopPropagation()} className="flex-1">
