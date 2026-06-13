@@ -14,7 +14,7 @@ export const useRoom = (roomId: string | undefined) => {
 
     try {
       // ルームの基本情報を取得
-      const { data: roomData, error: roomError } = await supabase
+      const { data: roomData} = await supabase
         .from('rooms')
         .select('name, is_copyable')
         .eq('id', roomId)

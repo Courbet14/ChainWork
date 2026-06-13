@@ -9,6 +9,8 @@ import { useFormFields } from '../hooks/useFormFields';
 import { useTasks } from '../hooks/useTasks';
 import { useWorkspaceLayout } from '../hooks/useWorkspaceLayout';
 import { useChainValidation } from '../hooks/useChainValidation';
+import { useTaskImport } from '../hooks/useTaskImport';
+import { useCriticalPath } from '../hooks/useCriticalPath';
 
 // 🧩 モーダル・ゲートコンポーネント
 import { AddFieldForm } from '../components/AddFieldForm';
@@ -16,6 +18,8 @@ import { AddTaskForm } from '../components/AddTaskForm';
 import { EditTaskModal } from '../components/EditTaskModal';
 import { EditRoomModal } from '../components/EditRoomModal';
 import { PasswordGate } from '../components/PasswordGate';
+import { TaskImportModal } from '../components/TaskImportModal';
+import { StatisticsModal } from '../components/StatisticsModal';
 
 // 🧩 新規作成したワークスペース専用コンポーネント
 import { WorkspaceSidebar } from '../components/WorkspaceSidebar';
@@ -48,22 +52,37 @@ export const Workspace = () => {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [sourceRoomInput, setSourceRoomInput] = useState('');
   
-  // パスワード認証用
+  // 🔒 パスワード認証用ステート
   const [passwordInput, setPasswordInput] = useState('');
   const [authError, setAuthError] = useState(false);
 
-  //
+  // 📄 ページとルームのID特定
   const activePage = pages.find(p => p.id === selectedPageId);
   const activeRoomId = activePage ? activePage.room_id : id;
 
-  // Xarrowの再描画トラッキング
+  const { criticalPathIds } = useCriticalPath(tasks);
+  const [showCriticalPath, setShowCriticalPath] = useState(false);
+  const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
+
+  // 💡 --- JSON一括インポート用カスタムフックの呼び出し -//
+  
+  const {
+    isImportModalOpen,
+    jsonInput,
+    setJsonInput,
+    importStatus,
+    handleImportJSON,
+    openModal: openImportModal,
+    closeModal: closeImportModal
+  } = useTaskImport(activeRoomId, selectedPageId, () => {
+    window.location.reload(); 
+  });
+
+  // 🔄 Xarrowの再描画トラッキング
   useEffect(() => {
     const timer = setTimeout(() => { updateXarrow(); }, 60);
     return () => clearTimeout(timer);
   }, [tasks, positions, updateXarrow, selectedPageId]);
-
-  
-
 
   if (!id) return <div className="p-6 text-red-500 font-mono">ルームIDが見つかりません。</div>;
 
@@ -87,9 +106,18 @@ export const Workspace = () => {
     if (success) setPasswordInput(''); else setAuthError(true);
   };
 
-  // 🔒 認証ゲート
+  // 🚪 認証ゲートの表示判定
   if (!isRoomLoading && room && !isAuth) {
-    return <PasswordGate roomId={id} roomName={room.name} authError={authError} passwordInput={passwordInput} setPasswordInput={setPasswordInput} onSubmit={handleAuthSubmit} />;
+    return (
+      <PasswordGate 
+        roomId={id} 
+        roomName={room.name} 
+        authError={authError} 
+        passwordInput={passwordInput} 
+        setPasswordInput={setPasswordInput} 
+        onSubmit={handleAuthSubmit} 
+      />
+    );
   }
 
   // 🎨 メインレンダリング
@@ -101,7 +129,7 @@ export const Workspace = () => {
         roomId={id} room={room} pages={pages} selectedPageId={selectedPageId} setSelectedPageId={setSelectedPageId}
         sourceRoomInput={sourceRoomInput} setSourceRoomInput={setSourceRoomInput} onExecuteClone={handleExecuteClone}
         isRoomLoading={isRoomLoading} onRenamePage={updateItemName} onDeletePage={deleteItem} onAddPage={handleAddChildToTree}
-        onAddLink={createLink} /* ← 新規追加 */
+        onAddLink={createLink}
         onMoveUp={moveItemUp} onMoveDown={moveItemDown} onMoveOut={moveItemOut} onMoveIn={moveItemIn}
         openRoomModal={() => setIsRoomModalOpen(true)} openFieldModal={() => setIsFieldModalOpen(true)}
       />
@@ -113,27 +141,73 @@ export const Workspace = () => {
           toggleCopyable={toggleCopyable}
           onAddTask={(parentId) => { setInitialParentId(parentId); setIsTaskModalOpen(true); }} 
         />
-
+        
         {/* 3. メインキャンバス */}
         <main className="flex-grow p-6 overflow-auto bg-gray-50 pb-28">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border min-h-full">
+          
+          <div className="bg-white p-6 rounded-2xl shadow-sm border min-h-full relative">
+            {/* 💡 統計情報を開くトグルボタンを新設 */}
+              <button 
+                onClick={() => setIsStatsModalOpen(true)}
+                className="bg-white hover:bg-gray-50 text-gray-600 text-xs font-bold px-4 py-2 rounded-lg shadow-sm border border-gray-200 transition-all flex items-center gap-2"
+              >
+                <span className="text-base">📊</span> 分析・アナリティクス
+              </button>
+            {/* 💡 3. 右上のボタン群にクリティカルパストグルを追加 */}
+            {selectedPageId && (
+              <div className="absolute top-4 right-4 z-10 flex gap-2">
+                <button 
+                  onClick={() => setShowCriticalPath(!showCriticalPath)}
+                  className={`text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition-all flex items-center gap-2 border
+                    ${showCriticalPath 
+                      ? 'bg-red-50 text-red-600 border-red-200 ring-2 ring-red-500/20' 
+                      : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                >
+                  <span className="text-base">🔥</span> 
+                  {showCriticalPath ? 'クリティカルパスON' : 'クリティカルパス'}
+                </button>
+                <button 
+                  onClick={openImportModal}
+                  className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                >
+                  <span className="text-base">📄</span> JSONから一括追加
+                </button>
+              </div>
+            )}
+            {/* 💡 JSONインポートボタン（ページ選択時のみキャンバス右上に表示） */}
+            {selectedPageId && (
+              <div className="absolute top-4 right-4 z-10">
+                <button 
+                  onClick={openImportModal}
+                  className="bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold px-4 py-2 rounded-lg shadow-sm transition-colors flex items-center gap-2"
+                >
+                  <span className="text-base">📄</span> JSONから一括追加
+                </button>
+              </div>
+            )}
+
             {!selectedPageId ? (
-              <div className="text-center py-24 text-gray-400 text-sm">サイドバーからページを選択するか、新しく作成してください。</div>
+              <div className="text-center py-24 text-gray-400 text-sm">
+                サイドバーからページを選択するか、新しく作成してください。
+              </div>
             ) : tasks.length === 0 ? (
               <div className="text-center py-24 border-2 border-dashed rounded-xl">
                 <p className="text-gray-400 text-sm mb-3">このページにはまだタスクがありません</p>
-                <button onClick={() => { setInitialParentId('HEAD'); setIsTaskModalOpen(true); }} className="text-blue-600 font-bold text-sm">ルートタスクを作成する</button>
+                <button onClick={() => { setInitialParentId('HEAD'); setIsTaskModalOpen(true); }} className="text-blue-600 font-bold text-sm">
+                  ルートタスクを作成する
+                </button>
               </div>
             ) : (
               <WorkspaceCanvas 
                 tasks={tasks} positions={positions} canvasWidth={canvasWidth} canvasHeight={canvasHeight} fields={fields}
-                onEditTask={setEditingTask} onAddFromNode={(parentId, e) => { e.stopPropagation(); setInitialParentId(parentId); setIsTaskModalOpen(true); }}
+                onEditTask={setEditingTask} onAddFromNode={(parentId, e) => { e.stopPropagation(); setInitialParentId(parentId); setIsTaskModalOpen(true); }} showCriticalPath={showCriticalPath}       // ← 追加
+                criticalPathIds={criticalPathIds}
               />
             )}
           </div>
         </main>
 
-        {/* 4. ダッシュボード */}
+        {/* 4. ダッシュボード & ターミナル */}
         <WorkspaceDashboard selectedPageId={selectedPageId} tasks={tasks} />
         <button
           type="button"
@@ -167,7 +241,7 @@ export const Workspace = () => {
       <AddFieldForm roomId={id} isOpen={isFieldModalOpen} onClose={() => setIsFieldModalOpen(false)} />
       
       <AddTaskForm 
-        roomId={activeRoomId!} /* id から activeRoomId に変更 */
+        roomId={activeRoomId!} 
         formFields={fields} tasks={tasks} isOpen={isTaskModalOpen} onClose={() => setIsTaskModalOpen(false)} validateConnection={validateConnection} 
         onSubmit={async (title, assignee, start, end, meta, prevId) => { 
           if (!validateConnection(prevId, null)) { alert('循環参照が検知されました'); return; } 
@@ -181,6 +255,26 @@ export const Workspace = () => {
         onUpdate={async (taskId, fieldsToUpdate) => { if ('prev_task_id' in fieldsToUpdate && !validateConnection(fieldsToUpdate.prev_task_id, taskId)) return; await updateTask(taskId, fieldsToUpdate); }} 
         onDelete={deleteTask} 
       />
+
+      {/* 💡 JSON一括インポート用モーダル */}
+      <TaskImportModal 
+        isOpen={isImportModalOpen}
+        onClose={closeImportModal}
+        jsonInput={jsonInput}
+        setJsonInput={setJsonInput}
+        importStatus={importStatus}
+        onImport={handleImportJSON}
+      />
+      <StatisticsModal 
+        isOpen={isStatsModalOpen}
+        onClose={() => setIsStatsModalOpen(false)}
+        tasks={tasks}
+        pages={pages}
+        roomName={room?.name}
+        selectedPageId={selectedPageId}
+        criticalPathIds={criticalPathIds} // 💡 これを渡すことで、モーダル内で主幹ルートの消化率がわかります
+      />
+
     </div>
   );
 };

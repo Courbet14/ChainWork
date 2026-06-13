@@ -14,9 +14,18 @@ type Props = {
   fields: FormField[];
   onEditTask: (task: Task) => void;
   onAddFromNode: (parentId: string, e: React.MouseEvent) => void;
+  showCriticalPath?: boolean;
+  criticalPathIds?: string[];
 };
 
-export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, fields, onEditTask, onAddFromNode }: Props) => {
+export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, fields, onEditTask, onAddFromNode,showCriticalPath ,criticalPathIds}: Props) => {
+  const isCriticalEdge = (parentId: string, childId: string) => {
+    if (!showCriticalPath || !criticalPathIds) return false;
+    const parentIndex = criticalPathIds.indexOf(parentId);
+    const childIndex = criticalPathIds.indexOf(childId);
+    // 配列内で隣り合っていれば経路上の矢印
+    return parentIndex !== -1 && childIndex === parentIndex + 1;
+  };
   return (
     <Xwrapper>
       <div className="relative" style={{ width: `${canvasWidth}px`, height: `${canvasHeight}px` }}>
@@ -29,12 +38,19 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
           if (taskStatus === '着手中') styles = { border: 'border-amber-200', bg: 'bg-amber-50/40', bar: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800' };
           if (taskStatus === '終了') styles = { border: 'border-emerald-200', bg: 'bg-emerald-50/30', bar: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-800' };
 
+          // 💡 クリティカルパス上のノードなら、赤い発光スタイルを上書き
+          const isCriticalNode = showCriticalPath && criticalPathIds?.includes(task.id);
+          if (isCriticalNode) {
+            styles.border = 'border-red-500 shadow-[0_0_15px_rgba(239,68,68,0.4)] z-20';
+            styles.bar = 'bg-red-500';
+          }
+
           return (
             <div 
               key={task.id} 
               id={`task-${task.id}`} 
               onClick={() => onEditTask(task)} 
-              className={`absolute w-40 aspect-square ${styles.border} ${styles.bg} border rounded-2xl shadow-sm hover:shadow-lg transition-all flex flex-col justify-between group z-10 cursor-pointer`} 
+              className={`absolute w-40 aspect-square ${styles.border} ${styles.bg} border rounded-2xl shadow-sm hover:shadow-lg transition-all flex flex-col justify-between group cursor-pointer ${isCriticalNode ? 'z-20' : 'z-10'}`} 
               style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
             >
               <div className={`absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl ${styles.bar}`} />
@@ -88,12 +104,48 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
         {/* 矢印（エッジ）の描画 */}
         {tasks.map((task) => {
           const arrows = [];
+          
+          // 通常の親タスクからの矢印
           if (task.prev_task_id) {
-            arrows.push(<Xarrow key={`main-${task.prev_task_id}-${task.id}`} start={`task-${task.prev_task_id}`} end={`task-${task.id}`} color="#475569" strokeWidth={2} path="grid" gridRadius={4} showHead={true} startAnchor="bottom" endAnchor="top" />);
+            // 💡 クリティカルパスの経路上なら赤く太くする
+            const isHighlight = isCriticalEdge(task.prev_task_id, task.id);
+            arrows.push(
+              <Xarrow 
+                key={`main-${task.prev_task_id}-${task.id}`} 
+                start={`task-${task.prev_task_id}`} 
+                end={`task-${task.id}`} 
+                color={isHighlight ? "#ef4444" : "#475569"} 
+                strokeWidth={isHighlight ? 4 : 2} 
+                path="grid" 
+                gridRadius={4} 
+                showHead={true} 
+                startAnchor="bottom" 
+                endAnchor="top" 
+                zIndex={isHighlight ? 10 : 0} // 赤い矢印は手前に
+              />
+            );
           }
+          
+          // 結合タスク（合流）からの矢印
           if (task.metadata?.merged_task_ids && Array.isArray(task.metadata.merged_task_ids)) {
             task.metadata.merged_task_ids.forEach(mId => { 
-              arrows.push(<Xarrow key={`merge-${mId}-${task.id}`} start={`task-${mId}`} end={`task-${task.id}`} color="#475569" strokeWidth={2} path="grid" gridRadius={4} showHead={true} startAnchor="bottom" endAnchor="top" />); 
+              // 💡 合流経路も同様にクリティカルパス判定
+              const isHighlightMerge = isCriticalEdge(mId, task.id);
+              arrows.push(
+                <Xarrow 
+                  key={`merge-${mId}-${task.id}`} 
+                  start={`task-${mId}`} 
+                  end={`task-${task.id}`} 
+                  color={isHighlightMerge ? "#ef4444" : "#475569"} 
+                  strokeWidth={isHighlightMerge ? 4 : 2} 
+                  path="grid" 
+                  gridRadius={4} 
+                  showHead={true} 
+                  startAnchor="bottom" 
+                  endAnchor="top" 
+                  zIndex={isHighlightMerge ? 10 : 0}
+                />
+              ); 
             });
           }
           return arrows;
