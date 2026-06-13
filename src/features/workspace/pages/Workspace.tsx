@@ -55,9 +55,15 @@ export const Workspace = () => {
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [showCriticalPath, setShowCriticalPath] = useState(false);
 
+
   useEffect(() => {
-    updateXarrow();
-  }, [tasks, positions, isFieldModalOpen, isRoomModalOpen, isAddingTask, editingTask, isTerminalOpen, updateXarrow]);
+    // 矢印の描画ズレを防ぐため、DOMの更新を少し待ってから再計算させるのがベストプラクティスです
+    const timer = setTimeout(() => {
+      updateXarrow();
+    }, 50);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, positions, isFieldModalOpen, isRoomModalOpen, isAddingTask, editingTask, isTerminalOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

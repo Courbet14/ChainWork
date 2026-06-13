@@ -99,7 +99,10 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
 
         {tasks.map((task) => {
           const arrows = [];
-          if (task.prev_task_id) {
+          
+          // 1. メインの依存関係からの矢印
+          // 💡 追加: tasks.some() で対象のタスクが現在の配列に存在するか確認
+          if (task.prev_task_id && tasks.some(t => t.id === task.prev_task_id)) {
             const isHighlight = isCriticalEdge(task.prev_task_id, task.id);
             arrows.push(
               <Xarrow 
@@ -118,24 +121,28 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
             );
           }
           
+          // 2. 結合タスク（合流）からの矢印
           if (task.metadata?.merged_task_ids && Array.isArray(task.metadata.merged_task_ids)) {
             task.metadata.merged_task_ids.forEach(mId => { 
-              const isHighlightMerge = isCriticalEdge(mId, task.id);
-              arrows.push(
-                <Xarrow 
-                  key={`merge-${mId}-${task.id}`} 
-                  start={`task-${mId}`} 
-                  end={`task-${task.id}`} 
-                  color={isHighlightMerge ? "#ef4444" : "#475569"} 
-                  strokeWidth={isHighlightMerge ? 4 : 2} 
-                  path="grid" 
-                  gridRadius={4} 
-                  showHead={true} 
-                  startAnchor="bottom" 
-                  endAnchor="top" 
-                  zIndex={isHighlightMerge ? 10 : 0}
-                />
-              ); 
+              // 💡 追加: 合流元のタスク（mId）が実際に存在する場合のみ描画する
+              if (tasks.some(t => t.id === mId)) {
+                const isHighlightMerge = isCriticalEdge(mId, task.id);
+                arrows.push(
+                  <Xarrow 
+                    key={`merge-${mId}-${task.id}`} 
+                    start={`task-${mId}`} 
+                    end={`task-${task.id}`} 
+                    color={isHighlightMerge ? "#ef4444" : "#475569"} 
+                    strokeWidth={isHighlightMerge ? 4 : 2} 
+                    path="grid" 
+                    gridRadius={4} 
+                    showHead={true} 
+                    startAnchor="bottom" 
+                    endAnchor="top" 
+                    zIndex={isHighlightMerge ? 10 : 0}
+                  />
+                ); 
+              }
             });
           }
           return arrows;
