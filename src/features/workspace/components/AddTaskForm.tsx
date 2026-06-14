@@ -20,6 +20,7 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
   const [endDate, setEndDate] = useState('');
   const [memo, setMemo] = useState('');
   const [status, setStatus] = useState<TaskStatus>('未着手');
+  const [stuckReason, setStuckReason] = useState('');
   const [customMetadata, setCustomMetadata] = useState<Record<string, any>>({});
   const [chosenPrevTaskId, setChosenPrevTaskId] = useState<string | 'HEAD'>('HEAD');
   const [mergedTaskIds, setMergedTaskIds] = useState<string[]>([]);
@@ -34,6 +35,7 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
       setEndDate('');
       setMemo('');
       setStatus('未着手');
+      setStuckReason('');
       setCustomMetadata({});
       setMergedTaskIds([]);
       setChosenPrevTaskId(hasRootAlready ? initialParentId : 'HEAD');
@@ -56,6 +58,7 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
 
     const metadata: TaskMetadata = {
       status,
+      stuck_reason: status === '停滞中' ? stuckReason : undefined,
       memo,
       merged_task_ids: mergedTaskIds,
       ...customMetadata
@@ -86,6 +89,7 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
             <select value={status} onChange={e => setStatus(e.target.value as TaskStatus)} className="w-full p-2 border rounded-lg text-sm bg-white font-bold">
               <option value="未着手">未着手</option>
               <option value="着手中">着手中</option>
+              <option value="停滞中">停滞中</option>
               <option value="終了">終了</option>
             </select>
           </div>
@@ -102,6 +106,13 @@ export const AddTaskForm = ({ formFields, tasks, isOpen, onClose, validateConnec
             <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full p-2 border rounded-lg text-sm font-mono" />
           </div>
         </div>
+
+        {status === '停滞中' && (
+          <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+            <label className="block text-xs font-bold text-rose-700 mb-1">停滞の理由・課題</label>
+            <input type="text" value={stuckReason} onChange={e => setStuckReason(e.target.value)} placeholder="例: APIの仕様待ち、ライブラリのエラーが解決できない等" className="w-full p-2 border border-rose-300 rounded text-sm bg-white focus:ring-rose-500" />
+          </div>
+        )}
 
         <div>
           <label className="block text-xs font-bold text-gray-500 mb-1">メモ・詳細 (Markdown)</label>

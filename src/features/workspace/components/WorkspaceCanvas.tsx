@@ -36,6 +36,7 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
           
           if (taskStatus === '着手中') styles = { border: 'border-amber-200', bg: 'bg-amber-50/40', bar: 'bg-amber-500', badge: 'bg-amber-100 text-amber-800' };
           if (taskStatus === '終了') styles = { border: 'border-emerald-200', bg: 'bg-emerald-50/30', bar: 'bg-emerald-500', badge: 'bg-emerald-100 text-emerald-800' };
+          if (taskStatus === '停滞中') styles = { border: 'border-rose-300 ring-2 ring-rose-500/20', bg: 'bg-rose-50/80', bar: 'bg-rose-500', badge: 'bg-rose-100 text-rose-800 animate-pulse' };
 
           const isCriticalNode = showCriticalPath && criticalPathIds?.includes(task.id);
           if (isCriticalNode) {
@@ -48,7 +49,7 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
               key={task.id} 
               id={`task-${task.id}`} 
               onClick={() => onEditTask(task)} 
-              className={`absolute w-40 aspect-square ${styles.border} ${styles.bg} border rounded-2xl shadow-sm hover:shadow-lg transition-all flex flex-col justify-between group cursor-pointer ${isCriticalNode ? 'z-20' : 'z-10'}`} 
+              className={`absolute w-40 aspect-square ${styles.border} ${styles.bg} border rounded-2xl shadow-sm hover:shadow-lg transition-all flex flex-col justify-between group cursor-pointer ${isCriticalNode || taskStatus === '停滞中' ? 'z-20' : 'z-10'}`} 
               style={{ left: `${pos.x}px`, top: `${pos.y}px` }}
             >
               <div className={`absolute top-0 left-0 right-0 h-1.5 rounded-t-2xl ${styles.bar}`} />
@@ -60,8 +61,13 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
               </div>
               
               <div className="px-3 flex-1 overflow-y-hidden relative space-y-1">
+                {taskStatus === '停滞中' && task.metadata?.stuck_reason && (
+                  <div className="text-[9px] font-bold text-rose-700 bg-rose-100/80 px-1.5 py-1 rounded border border-rose-200 line-clamp-2">
+                    {task.metadata.stuck_reason}
+                  </div>
+                )}
                 {task.metadata && Object.entries(task.metadata).map(([k, v]) => {
-                  if (k === 'merged_task_ids' || k === 'status' || k === 'memo') return null;
+                  if (k === 'merged_task_ids' || k === 'status' || k === 'memo' || k === 'stuck_reason') return null;
                   if (v === '' || v === null || v === undefined) return null;
                   const f = fields.find(fd => fd.field_key === k);
                   return (
@@ -71,7 +77,7 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
                     </div>
                   );
                 })}
-                {task.metadata?.memo && (
+                {task.metadata?.memo && taskStatus !== '停滞中' && (
                   <div className="relative text-[9px] bg-slate-50 px-1.5 py-1 rounded border border-slate-200 text-slate-500 shadow-xs mt-1 overflow-hidden max-h-12 leading-tight">
                     <ReactMarkdown components={{ p: ({node, ...props}) => <p className="mb-0.5 last:mb-0" {...props} />, h1: ({node, ...props}) => <strong className="block text-[10px] text-slate-700 mb-0.5" {...props} />, h2: ({node, ...props}) => <strong className="block text-[10px] text-slate-700 mb-0.5" {...props} />, pre: ({node, ...props}: any) => <div className="m-0" {...props} /> }}>
                       {task.metadata.memo}
@@ -99,9 +105,6 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
 
         {tasks.map((task) => {
           const arrows = [];
-          
-          // 1. メインの依存関係からの矢印
-          // 💡 追加: tasks.some() で対象のタスクが現在の配列に存在するか確認
           if (task.prev_task_id && tasks.some(t => t.id === task.prev_task_id)) {
             const isHighlight = isCriticalEdge(task.prev_task_id, task.id);
             arrows.push(
@@ -121,10 +124,8 @@ export const WorkspaceCanvas = ({ tasks, positions, canvasWidth, canvasHeight, f
             );
           }
           
-          // 2. 結合タスク（合流）からの矢印
           if (task.metadata?.merged_task_ids && Array.isArray(task.metadata.merged_task_ids)) {
             task.metadata.merged_task_ids.forEach(mId => { 
-              // 💡 追加: 合流元のタスク（mId）が実際に存在する場合のみ描画する
               if (tasks.some(t => t.id === mId)) {
                 const isHighlightMerge = isCriticalEdge(mId, task.id);
                 arrows.push(

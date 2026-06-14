@@ -13,6 +13,7 @@ export const WorkspaceDashboard = ({ selectedPageId, tasks }: Props) => {
 
     const todo = tasks.filter(t => (t.metadata?.status || '未着手') === '未着手').length;
     const doing = tasks.filter(t => t.metadata?.status === '着手中').length;
+    const stuck = tasks.filter(t => t.metadata?.status === '停滞中').length;
     const done = tasks.filter(t => t.metadata?.status === '終了').length;
     const rate = Math.round((done / total) * 100);
 
@@ -27,7 +28,7 @@ export const WorkspaceDashboard = ({ selectedPageId, tasks }: Props) => {
       daysLeft = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     }
 
-    return { total, todo, doing, done, rate, earliestTask, daysLeft };
+    return { total, todo, doing, stuck, done, rate, earliestTask, daysLeft };
   }, [tasks]);
 
   if (!selectedPageId || !stats) return null;
@@ -44,22 +45,26 @@ export const WorkspaceDashboard = ({ selectedPageId, tasks }: Props) => {
         </div>
       </div>
 
-      <div className="flex items-center justify-center gap-4 px-6 border-r border-slate-800 flex-1">
+      <div className="flex items-center justify-center gap-3 px-4 border-r border-slate-800 flex-1">
         <div className="text-center">
           <div className="text-[10px] font-bold text-slate-400 mb-0.5">未着手</div>
-          <div className="bg-slate-800 text-slate-300 font-mono font-bold px-2.5 py-0.5 text-xs rounded-md border border-slate-700">{stats.todo}</div>
+          <div className="bg-slate-800 text-slate-300 font-mono font-bold px-2 py-0.5 text-xs rounded-md border border-slate-700">{stats.todo}</div>
         </div>
         <div className="text-center">
           <div className="text-[10px] font-bold text-amber-400 mb-0.5">着手中</div>
-          <div className="bg-amber-950/40 text-amber-400 font-mono font-bold px-2.5 py-0.5 text-xs rounded-md border border-amber-900/60">{stats.doing}</div>
+          <div className="bg-amber-950/40 text-amber-400 font-mono font-bold px-2 py-0.5 text-xs rounded-md border border-amber-900/60">{stats.doing}</div>
+        </div>
+        <div className="text-center">
+          <div className="text-[10px] font-bold text-rose-400 mb-0.5">停滞中</div>
+          <div className="bg-rose-950/40 text-rose-400 font-mono font-bold px-2 py-0.5 text-xs rounded-md border border-rose-900/60">{stats.stuck}</div>
         </div>
         <div className="text-center">
           <div className="text-[10px] font-bold text-emerald-400 mb-0.5">終了</div>
-          <div className="bg-emerald-950/40 text-emerald-400 font-mono font-bold px-2.5 py-0.5 text-xs rounded-md border border-emerald-900/60">{stats.done}</div>
+          <div className="bg-emerald-950/40 text-emerald-400 font-mono font-bold px-2 py-0.5 text-xs rounded-md border border-emerald-900/60">{stats.done}</div>
         </div>
-        <div className="text-center">
+        <div className="text-center border-l border-slate-700 pl-3">
           <div className="text-[10px] font-bold text-slate-400 mb-0.5">合計</div>
-          <div className="bg-slate-700 text-white font-mono font-bold px-2.5 py-0.5 text-xs rounded-md">{stats.total} <span className="text-[9px] text-slate-300">件</span></div>
+          <div className="bg-slate-700 text-white font-mono font-bold px-2 py-0.5 text-xs rounded-md">{stats.total}</div>
         </div>
       </div>
 

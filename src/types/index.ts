@@ -1,4 +1,4 @@
-export type TaskStatus = '未着手' | '着手中' | '終了';
+export type TaskStatus = '未着手' | '着手中' | '終了'| '停滞中';
 
 export type TaskMetadata = {
   status?: TaskStatus;

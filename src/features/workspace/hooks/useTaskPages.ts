@@ -43,7 +43,12 @@ export const useTaskPages = (roomId: string | undefined) => {
           .order('sort_order', { ascending: true });
         
         if (linkedData) {
-          const mountedItems = linkedData.map(d => ({ ...d, parent_id: link.id, is_mounted: true }));
+          // 💡 修正ポイント：ルート要素（parent_id が null）のみリンクの子にし、階層構造を維持する
+          const mountedItems = linkedData.map(d => ({ 
+            ...d, 
+            parent_id: d.parent_id === null ? link.id : d.parent_id, 
+            is_mounted: true 
+          }));
           allPages = [...allPages, ...mountedItems];
         }
       }
@@ -183,6 +188,16 @@ export const useTaskPages = (roomId: string | undefined) => {
     }
   };
 
+  const moveToFolder = async (id: string, targetParentId: string | null) => {
+    try {
+      const { error } = await supabase.from('task_pages').update({ parent_id: targetParentId }).eq('id', id);
+      if (error) throw error;
+      fetchPages();
+    } catch (err) {
+      console.error('Move to folder error:', err);
+    }
+  };
+
   const createLink = async (name: string, targetRoomId: string) => {
     if (!roomId || !name.trim() || !targetRoomId.trim()) return false;
 
@@ -231,6 +246,7 @@ export const useTaskPages = (roomId: string | undefined) => {
     moveItemDown,
     moveItemOut,
     moveItemIn,
+    moveToFolder,
     isLoading
   };
 };

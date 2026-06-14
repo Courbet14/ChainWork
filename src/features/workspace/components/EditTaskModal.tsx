@@ -23,6 +23,7 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
   const [endDate, setEndDate] = useState('');
   const [memo, setMemo] = useState('');
   const [status, setStatus] = useState<TaskStatus>('未着手');
+  const [stuckReason, setStuckReason] = useState('');
   const [customMetadata, setCustomMetadata] = useState<Record<string, any>>({});
   const [chosenPrevTaskId, setChosenPrevTaskId] = useState<string | 'HEAD'>('HEAD');
   const [mergedTaskIds, setMergedTaskIds] = useState<string[]>([]);
@@ -34,12 +35,14 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
       setStartDate(task.start_date || '');
       setEndDate(task.end_date || '');
       setStatus(task.metadata?.status || '未着手');
+      setStuckReason(task.metadata?.stuck_reason || '');
       setMemo(task.metadata?.memo || '');
       setChosenPrevTaskId(task.prev_task_id || 'HEAD');
       setMergedTaskIds(task.metadata?.merged_task_ids || []);
       
       const customMeta = { ...task.metadata };
       delete customMeta.status;
+      delete customMeta.stuck_reason;
       delete customMeta.merged_task_ids;
       delete customMeta.memo;
       setCustomMetadata(customMeta);
@@ -65,6 +68,7 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
 
     const newMetadata: TaskMetadata = {
       status,
+      stuck_reason: status === '停滞中' ? stuckReason : undefined,
       memo,
       merged_task_ids: mergedTaskIds,
       ...customMetadata
@@ -82,6 +86,13 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
     setIsEditMode(false);
   };
 
+  const getStatusBadge = () => {
+    if (status === '着手中') return 'bg-amber-100 text-amber-800';
+    if (status === '停滞中') return 'bg-rose-100 text-rose-800 animate-pulse';
+    if (status === '終了') return 'bg-emerald-100 text-emerald-800';
+    return 'bg-slate-100 text-slate-600';
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="absolute inset-0" onClick={onClose} />
@@ -92,7 +103,7 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
               <div className="flex justify-between items-start gap-4">
                 <div>
                   <div className="flex items-center gap-3 mb-2">
-                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${status === '着手中' ? 'bg-amber-100 text-amber-800' : status === '終了' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-600'}`}>
+                    <span className={`px-2.5 py-1 rounded-md text-xs font-bold ${getStatusBadge()}`}>
                       {status}
                     </span>
                     <span className="text-xs text-gray-400 font-mono">ID: {task.id.substring(0, 8)}</span>
@@ -101,6 +112,13 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
                 </div>
                 <button onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
               </div>
+
+              {status === '停滞中' && stuckReason && (
+                <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
+                  <p className="text-[10px] font-bold text-rose-500 uppercase mb-1">停滞の理由・課題</p>
+                  <p className="font-bold text-sm text-rose-800">{stuckReason}</p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-4 bg-gray-50 rounded-xl p-4 border border-gray-100">
                 <div>
@@ -164,6 +182,7 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
                   <select value={status} onChange={e => setStatus(e.target.value as TaskStatus)} className="w-full p-2 border rounded-lg bg-white font-bold text-sm">
                     <option value="未着手">未着手</option>
                     <option value="着手中">着手中</option>
+                    <option value="停滞中">停滞中</option>
                     <option value="終了">終了</option>
                   </select>
                 </div>
@@ -180,6 +199,13 @@ export const EditTaskModal = ({ task, formFields, tasks, isOpen, isAuth, onClose
                   <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} className="w-full p-2 border rounded-lg text-sm font-mono" />
                 </div>
               </div>
+
+              {status === '停滞中' && (
+                <div className="bg-rose-50 border border-rose-200 rounded-lg p-3">
+                  <label className="block text-xs font-bold text-rose-700 mb-1">停滞の理由・課題</label>
+                  <input type="text" value={stuckReason} onChange={e => setStuckReason(e.target.value)} placeholder="例: APIの仕様待ち、ライブラリのエラーが解決できない等" className="w-full p-2 border border-rose-300 rounded text-sm bg-white focus:ring-rose-500" />
+                </div>
+              )}
 
               <div>
                 <label className="block text-xs font-bold text-gray-500 mb-1">メモ (Markdown)</label>

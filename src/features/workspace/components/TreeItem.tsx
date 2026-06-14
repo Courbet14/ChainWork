@@ -61,10 +61,10 @@ export const TreeItem = ({
     setShowChildInput(false);
   };
 
-  const handleItemClick = () => {
+   const handleItemClick = () => {
     if (item.is_folder) {
       setIsOpen(!isOpen);
-    } else if (!isLink && !isMountedNode) {
+    } else if (!isLink) {               
       onSelect(item.id);
     }
   };
