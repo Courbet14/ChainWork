@@ -1,7 +1,8 @@
-export type TaskStatus = '未着手' | '着手中' | '終了'| '停滞中';
+export type TaskStatus = '未着手' | '着手中' | '終了' | '停滞中';
 
 export type TaskMetadata = {
   status?: TaskStatus;
+  stuck_reason?: string;
   merged_task_ids?: string[];
   memo?: string;
   [key: string]: any;
@@ -12,6 +13,7 @@ export type Room = {
   name: string | null;
   is_copyable: boolean;
   edit_password?: string | null;
+  memo?: string | null; // 💡 追加
   created_at: string;
 };
 

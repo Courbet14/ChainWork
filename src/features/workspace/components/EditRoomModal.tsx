@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
+import type { Room } from '../../../types';
 
 type Props = {
-  room: { name: string; edit_password: string | null } | null;
+  room: Room | null;
   isOpen: boolean;
   onClose: () => void;
-  onUpdateRoom: (newName: string, newPassword: string | null) => Promise<boolean>;
+  onUpdateRoom: (updates: Partial<Room>) => Promise<boolean>;
 };
 
 export const EditRoomModal = ({ room, isOpen, onClose, onUpdateRoom }: Props) => {
@@ -27,7 +28,12 @@ export const EditRoomModal = ({ room, isOpen, onClose, onUpdateRoom }: Props) =>
     setIsSaving(true);
 
     const finalPassword = password.trim() || null;
-    const success = await onUpdateRoom(roomName.trim(), finalPassword);
+    
+    // 💡 オブジェクト形式で渡すように修正
+    const success = await onUpdateRoom({
+      name: roomName.trim(),
+      edit_password: finalPassword
+    });
     
     setIsSaving(false);
     if (success) {

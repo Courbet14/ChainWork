@@ -6,7 +6,7 @@ type TreeItemProps = {
   index: number;
   allPages: TaskPageItem[];
   selectedId: string | null;
-  onSelect: (id: string) => void;
+  onSelect: (id: string | null) => void; // 💡 null許容に修正
   onRename: (id: string, nextName: string) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onAddChild: (name: string, isFolder: boolean, parentId: string) => Promise<void>;
@@ -14,10 +14,11 @@ type TreeItemProps = {
   onMoveDown: (id: string) => void;
   onMoveOut: (id: string) => void;
   onMoveIn: (id: string) => void;
+  onMoveToFolder: (id: string, targetParentId: string | null) => Promise<void>; // 💡 ここを確実に追加
 };
 
 export const TreeItem = ({
-  item, index, allPages, selectedId, onSelect, onRename, onDelete, onAddChild, onMoveUp, onMoveDown, onMoveOut, onMoveIn
+  item, index, allPages, selectedId, onSelect, onRename, onDelete, onAddChild, onMoveUp, onMoveDown, onMoveOut, onMoveIn, onMoveToFolder
 }: TreeItemProps) => {
   const [isOpen, setIsOpen] = useState(true);
   const [isEditing, setIsEditing] = useState(false);
@@ -61,10 +62,10 @@ export const TreeItem = ({
     setShowChildInput(false);
   };
 
-   const handleItemClick = () => {
+  const handleItemClick = () => {
     if (item.is_folder) {
       setIsOpen(!isOpen);
-    } else if (!isLink) {               
+    } else if (!isLink) { // 💡 リンク以外のページはマウントされていても開けるように修正済み
       onSelect(item.id);
     }
   };
@@ -106,22 +107,51 @@ export const TreeItem = ({
       </div>
 
       {isMenuOpen && (
-        <div ref={menuRef} className="absolute right-2 top-8 z-50 w-40 bg-slate-800 border border-slate-700 rounded-xl shadow-xl py-1" onClick={e => e.stopPropagation()}>
+        <div ref={menuRef} className="absolute right-2 top-8 z-50 w-52 bg-slate-800 border border-slate-700 rounded-xl shadow-xl py-1" onClick={e => e.stopPropagation()}>
           <div className="flex justify-between px-2 pb-1 mb-1 border-b border-slate-700">
             <button onClick={() => { onMoveUp(item.id); setIsMenuOpen(false); }} className="p-1 hover:bg-slate-700 rounded text-slate-300" title="上へ">↑</button>
             <button onClick={() => { onMoveDown(item.id); setIsMenuOpen(false); }} className="p-1 hover:bg-slate-700 rounded text-slate-300" title="下へ">↓</button>
-            <button onClick={() => { onMoveIn(item.id); setIsMenuOpen(false); }} className="p-1 hover:bg-slate-700 rounded text-slate-300" title="階層を下げる">→</button>
-            <button onClick={() => { onMoveOut(item.id); setIsMenuOpen(false); }} className="p-1 hover:bg-slate-700 rounded text-slate-300" title="階層を上げる">←</button>
+            <button onClick={() => { onMoveOut(item.id); setIsMenuOpen(false); }} className="p-1 hover:bg-slate-700 rounded text-slate-300" title="階層を上げる（外へ）">←</button>
           </div>
+          
+          <div className="px-2 py-1.5 border-b border-slate-700">
+            <label className="text-[10px] text-slate-400 font-bold block mb-1">📂 移動先のフォルダ</label>
+            <select 
+              value={item.parent_id || 'root'}
+              onChange={(e) => {
+                const target = e.target.value === 'root' ? null : e.target.value;
+                onMoveToFolder(item.id, target);
+                setIsMenuOpen(false);
+              }}
+              className="w-full bg-slate-900 text-slate-300 text-xs border border-slate-700 rounded py-1.5 px-1 focus:outline-none focus:border-blue-500"
+            >
+              <option value="root">-- ルート階層 --</option>
+              {allPages.filter(p => p.is_folder && p.id !== item.id).map(f => (
+                <option key={f.id} value={f.id}>📁 {f.name}</option>
+              ))}
+            </select>
+          </div>
+
           <button onClick={() => { setIsEditing(true); setIsMenuOpen(false); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-slate-700 text-slate-200">名前を変更</button>
           <button onClick={() => { setIsMenuOpen(false); if(confirm(`「${item.name}」を削除しますか？`)) onDelete(item.id); }} className="w-full text-left px-3 py-1.5 text-xs hover:bg-red-950/60 text-red-400 font-bold">削除</button>
         </div>
       )}
 
       {showChildInput && (
-        <form onSubmit={handleCreateChildSubmit} className="pl-6 pr-2 py-1 flex gap-1">
-          <input type="text" placeholder={showChildInput === 'folder' ? "フォルダ名..." : "ページ名..."} value={childName} onChange={e => setChildName(e.target.value)} onBlur={() => setTimeout(() => setShowChildInput(false), 200)} autoFocus className="w-full bg-slate-900 text-slate-200 border border-slate-700 rounded-lg px-2.5 py-1 text-xs focus:outline-none" />
-        </form>
+        <div className="pl-6 pr-2 py-1">
+          <form onSubmit={handleCreateChildSubmit} className="flex gap-1 items-center bg-slate-900 border border-slate-700 rounded-lg pr-1">
+            <input 
+              type="text" 
+              placeholder={showChildInput === 'folder' ? "フォルダ名..." : "ページ名..."} 
+              value={childName} 
+              onChange={e => setChildName(e.target.value)} 
+              autoFocus 
+              className="w-full bg-transparent text-slate-200 px-2.5 py-1 text-xs focus:outline-none" 
+            />
+            <button type="submit" className="text-[10px] bg-blue-600 hover:bg-blue-500 text-white px-2 py-0.5 rounded font-bold transition-colors">追加</button>
+            <button type="button" onClick={() => setShowChildInput(false)} className="text-[10px] text-slate-500 hover:text-slate-300 px-1.5">✕</button>
+          </form>
+        </div>
       )}
 
       {item.is_folder && isOpen && children.length > 0 && (
@@ -141,6 +171,7 @@ export const TreeItem = ({
               onMoveDown={onMoveDown}
               onMoveOut={onMoveOut}
               onMoveIn={onMoveIn}
+              onMoveToFolder={onMoveToFolder}
             />
           ))}
         </div>

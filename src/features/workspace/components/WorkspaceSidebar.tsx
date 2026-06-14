@@ -20,8 +20,10 @@ type Props = {
   onMoveDown: (id: string) => void;
   onMoveOut: (id: string) => void;
   onMoveIn: (id: string) => void;
+  onMoveToFolder: (id: string, targetParentId: string | null) => Promise<void>;
   openRoomModal: () => void;
   openFieldModal: () => void;
+  openMemoModal: () => void; // 💡 追加
 };
 
 export const WorkspaceSidebar = (props: Props) => {
@@ -33,9 +35,20 @@ export const WorkspaceSidebar = (props: Props) => {
           <div className="flex items-center justify-between mt-1 text-xs text-slate-400 font-mono">
             <span>Room ID: {props.roomId}</span>
           </div>
-          <p className="text-sm font-bold text-blue-400 font-sans mt-1 bg-slate-800/40 px-2.5 py-1 rounded-lg border border-slate-800/50 truncate">
-            {props.room?.name || 'Loading...'}
-          </p>
+          
+          {/* 💡 ルーム名とメモボタンを並べる */}
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="text-sm font-bold text-blue-400 font-sans bg-slate-800/40 px-2.5 py-1.5 rounded-lg border border-slate-800/50 truncate flex-1">
+              {props.room?.name || 'Loading...'}
+            </p>
+            <button 
+              onClick={props.openMemoModal} 
+              className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-2.5 py-1.5 rounded-lg font-bold border border-slate-700 flex-shrink-0 transition-colors shadow-sm"
+              title="共有リンクやメモを確認"
+            >
+              📝 メモ
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 flex flex-col overflow-hidden min-h-0">
@@ -59,7 +72,7 @@ export const WorkspaceSidebar = (props: Props) => {
             <FileTreeEditor 
               pages={props.pages} selectedPageId={props.selectedPageId} setSelectedPageId={props.setSelectedPageId} 
               onRename={props.onRenamePage} onDelete={props.onDeletePage} onAddChild={props.onAddPage} onAddLink={props.onAddLink} 
-              onMoveUp={props.onMoveUp} onMoveDown={props.onMoveDown} onMoveOut={props.onMoveOut} onMoveIn={props.onMoveIn} 
+              onMoveUp={props.onMoveUp} onMoveDown={props.onMoveDown} onMoveOut={props.onMoveOut} onMoveIn={props.onMoveIn} onMoveToFolder={props.onMoveToFolder}
             />
           </div>
         </div>

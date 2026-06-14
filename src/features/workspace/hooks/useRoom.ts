@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../../../lib/supabase';
+import type { Room } from '../../../types';
 
 export const useRoom = (roomId: string | undefined) => {
-  const [room, setRoom] = useState<any>(null);
+  const [room, setRoom] = useState<Room | null>(null);
   const [isAuth, setIsAuth] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
@@ -11,13 +12,14 @@ export const useRoom = (roomId: string | undefined) => {
     setIsLoading(true);
 
     try {
+      // 💡 memo も一緒に取得する
       const { data: roomData} = await supabase
         .from('rooms')
-        .select('name, is_copyable')
+        .select('name, is_copyable, memo')
         .eq('id', roomId)
         .maybeSingle();
 
-      setRoom(roomData);
+      setRoom(roomData as Room);
 
       if (roomData) {
         const { data: memberData } = await supabase
@@ -78,16 +80,17 @@ export const useRoom = (roomId: string | undefined) => {
     }
   };
 
-  const updateRoom = async (newName: string, newPassword: string | null) => {
+  // 💡 部分的な更新を行えるように変更
+  const updateRoom = async (updates: Partial<Room>) => {
     if (!roomId) return false;
     try {
       const { error } = await supabase
         .from('rooms')
-        .update({ name: newName, edit_password: newPassword })
+        .update(updates)
         .eq('id', roomId);
         
       if (error) throw error;
-      setRoom({ ...room, name: newName });
+      setRoom(prev => prev ? { ...prev, ...updates } : null);
       return true;
     } catch (err) {
       console.error('Update room error:', err);
@@ -99,7 +102,7 @@ export const useRoom = (roomId: string | undefined) => {
     try {
       const { data: sourceRoom, error: roomCheckErr } = await supabase
         .from('rooms')
-        .select('name, is_copyable')
+        .select('name, is_copyable, memo')
         .eq('id', sourceRoomId)
         .maybeSingle();
 
@@ -114,7 +117,25 @@ export const useRoom = (roomId: string | undefined) => {
       const pageIdMapping: Record<string, string> = {};
 
       if (pagesData && pagesData.length > 0) {
-        for (const page of pagesData) {
+        // 💡 追加: 親フォルダが必ず先に処理されるように並び替え（トポロジカルソート）
+        const sortedPages: any[] = [];
+        const visited = new Set<string>();
+        const pageMap = new Map(pagesData.map(p => [p.id, p]));
+
+        const addPage = (page: any) => {
+          if (visited.has(page.id)) return;
+          // 親が存在し、まだ処理されていない場合は親を先に処理する
+          if (page.parent_id && pageMap.has(page.parent_id)) {
+            addPage(pageMap.get(page.parent_id));
+          }
+          sortedPages.push(page);
+          visited.add(page.id);
+        };
+
+        pagesData.forEach(addPage);
+
+        // 💡 修正: pagesData ではなく、並び替えた sortedPages の順番でインサートを行う
+        for (const page of sortedPages) {
           const { data: newPageData, error: pageInsErr } = await supabase
             .from('task_pages')
             .insert([{ 
@@ -133,7 +154,6 @@ export const useRoom = (roomId: string | undefined) => {
           }
         }
       }
-
       const { data: tasksData } = await supabase
         .from('tasks')
         .select('*')

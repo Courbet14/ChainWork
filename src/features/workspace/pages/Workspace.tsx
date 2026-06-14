@@ -18,6 +18,7 @@ import { EditRoomModal } from '../components/EditRoomModal';
 import { PasswordGate } from '../components/PasswordGate';
 import { TaskImportModal } from '../components/TaskImportModal';
 import { StatisticsModal } from '../components/StatisticsModal';
+import { RoomMemoModal } from '../components/RoomMemoModal'; // 💡 追加
 
 import { WorkspaceSidebar } from '../components/WorkspaceSidebar';
 import { WorkspaceHeader } from '../components/WorkspaceHeader';
@@ -32,7 +33,7 @@ export const Workspace = () => {
   const activeRoomId = id;
 
   const { room, isAuth, verifyPassword, toggleCopyable, updateRoom, cloneWholeRoom, isLoading: isRoomLoading } = useRoom(activeRoomId);
-  const { pages, selectedPageId, setSelectedPageId, createPage, createFolder, createLink, updateItemName, deleteItem, moveItemUp, moveItemDown, moveItemOut, moveItemIn } = useTaskPages(activeRoomId);
+  const { pages, selectedPageId, setSelectedPageId, createPage, createFolder, createLink, updateItemName, deleteItem, moveItemUp, moveItemDown, moveItemOut, moveItemIn, moveToFolder } = useTaskPages(activeRoomId);
   const { fields } = useFormFields(activeRoomId);
   const { tasks, addTask, updateTask, deleteTask, isLoading: isTaskLoading } = useTasks(selectedPageId);
   const { validateConnection } = useChainValidation(tasks);
@@ -47,6 +48,7 @@ export const Workspace = () => {
   
   const [isFieldModalOpen, setIsFieldModalOpen] = useState(false);
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
+  const [isMemoModalOpen, setIsMemoModalOpen] = useState(false); // 💡 追加
   const [isStatsModalOpen, setIsStatsModalOpen] = useState(false);
   const [isAddingTask, setIsAddingTask] = useState(false);
   const [initialParentId, setInitialParentId] = useState<string | 'HEAD'>('HEAD');
@@ -55,15 +57,13 @@ export const Workspace = () => {
   const [isTerminalOpen, setIsTerminalOpen] = useState(false);
   const [showCriticalPath, setShowCriticalPath] = useState(false);
 
-
   useEffect(() => {
-    // 矢印の描画ズレを防ぐため、DOMの更新を少し待ってから再計算させるのがベストプラクティスです
     const timer = setTimeout(() => {
       updateXarrow();
     }, 50);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, positions, isFieldModalOpen, isRoomModalOpen, isAddingTask, editingTask, isTerminalOpen]);
+  }, [tasks, positions, isFieldModalOpen, isRoomModalOpen, isMemoModalOpen, isAddingTask, editingTask, isTerminalOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -113,8 +113,8 @@ export const Workspace = () => {
         roomId={activeRoomId!} room={room} pages={pages} selectedPageId={selectedPageId} setSelectedPageId={setSelectedPageId} 
         sourceRoomInput={sourceRoomInput} setSourceRoomInput={setSourceRoomInput} onExecuteClone={handleExecuteClone} isRoomLoading={isRoomLoading} 
         onRenamePage={updateItemName} onDeletePage={deleteItem} onAddPage={(name, isFolder, pid) => isFolder ? createFolder(name, pid) : createPage(name, pid)} 
-        onAddLink={createLink} onMoveUp={moveItemUp} onMoveDown={moveItemDown} onMoveOut={moveItemOut} onMoveIn={moveItemIn} 
-        openRoomModal={() => setIsRoomModalOpen(true)} openFieldModal={() => setIsFieldModalOpen(true)} 
+        onAddLink={createLink} onMoveUp={moveItemUp} onMoveDown={moveItemDown} onMoveOut={moveItemOut} onMoveIn={moveItemIn} onMoveToFolder={moveToFolder}
+        openRoomModal={() => setIsRoomModalOpen(true)} openFieldModal={() => setIsFieldModalOpen(true)} openMemoModal={() => setIsMemoModalOpen(true)}
       />
 
       <div className="flex-1 flex flex-col overflow-hidden relative">
@@ -179,6 +179,12 @@ export const Workspace = () => {
         onUpdateRoom={updateRoom} 
       />
 
+      {/* 💡 新規追加したルームメモ用モーダル */}
+      <RoomMemoModal
+        room={room} isOpen={isMemoModalOpen} isAuth={isAuth} onClose={() => setIsMemoModalOpen(false)}
+        onUpdateRoom={updateRoom}
+      />
+
       <AddTaskForm 
         roomId={activeRoomId!} formFields={fields} tasks={tasks} isOpen={isAddingTask} onClose={() => setIsAddingTask(false)} validateConnection={validateConnection} 
         onSubmit={async (title, assignee, start, end, meta, prevId) => { 
@@ -199,7 +205,7 @@ export const Workspace = () => {
       />
       
       <StatisticsModal 
-        isOpen={isStatsModalOpen} onClose={() => setIsStatsModalOpen(false)} tasks={tasks} pages={pages} roomName={room?.name} selectedPageId={selectedPageId} criticalPathIds={criticalPathIds}
+        isOpen={isStatsModalOpen} onClose={() => setIsStatsModalOpen(false)} tasks={tasks} pages={pages} roomName={room?.name || undefined} selectedPageId={selectedPageId} criticalPathIds={criticalPathIds}
       />
 
       <TerminalConsole 

@@ -14,11 +14,12 @@ type FileTreeEditorProps = {
   onMoveDown: (id: string) => void;
   onMoveOut: (id: string) => void;
   onMoveIn: (id: string) => void;
+  onMoveToFolder: (id: string, targetParentId: string | null) => Promise<void>; // 💡 ここに型定義を追加
 };
 
 export const FileTreeEditor = ({
   pages, selectedPageId, setSelectedPageId, onRename, onDelete, onAddChild, onAddLink,
-  onMoveUp, onMoveDown, onMoveOut, onMoveIn
+  onMoveUp, onMoveDown, onMoveOut, onMoveIn, onMoveToFolder // 💡 ここでも受け取る
 }: FileTreeEditorProps) => {
   const [showRootInput, setShowRootInput] = useState<false | 'page' | 'folder' | 'link'>(false);
   const [rootName, setRootName] = useState('');
@@ -101,6 +102,7 @@ export const FileTreeEditor = ({
                 onMoveDown={onMoveDown}
                 onMoveOut={onMoveOut}
                 onMoveIn={onMoveIn}
+                onMoveToFolder={onMoveToFolder} // 💡 TreeItemに流し込む
               />
             ))
           )}

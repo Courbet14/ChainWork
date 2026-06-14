@@ -43,7 +43,6 @@ export const useTaskPages = (roomId: string | undefined) => {
           .order('sort_order', { ascending: true });
         
         if (linkedData) {
-          // 💡 修正ポイント：ルート要素（parent_id が null）のみリンクの子にし、階層構造を維持する
           const mountedItems = linkedData.map(d => ({ 
             ...d, 
             parent_id: d.parent_id === null ? link.id : d.parent_id, 
@@ -66,9 +65,28 @@ export const useTaskPages = (roomId: string | undefined) => {
     }
   }, [roomId, selectedPageId]);
 
+  // 💡 ここにリアルタイム通信の購読処理を追加しました！
   useEffect(() => {
     fetchPages();
-  }, [fetchPages]);
+
+    if (!roomId) return;
+
+    const channel = supabase
+      .channel(`realtime-task-pages-${roomId}`)
+      .on('postgres_changes', { 
+        event: '*', 
+        schema: 'public', 
+        table: 'task_pages',
+        filter: `room_id=eq.${roomId}` 
+      }, () => {
+        fetchPages(); // 他の人が変更したら再取得する
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [roomId, fetchPages]);
 
   const createItem = async (name: string, isFolder: boolean, parentId: string | null, targetRoomId: string | null = null) => {
     if (!roomId || !name.trim()) return;
